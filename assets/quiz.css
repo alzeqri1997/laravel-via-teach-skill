@@ -1,0 +1,126 @@
+/* quiz.css — styles for the retrieval-practice widgets in quiz.js.
+   Kept separate from course.css so a lesson can load prose styles without the quiz layer. */
+
+.quiz, .recall {
+  border: 1px solid var(--rule);
+  border-radius: 5px;
+  background: var(--paper-warm);
+  padding: 1.2rem 1.3rem;
+  margin: 0 0 1.4rem;
+}
+
+.quiz .q, .recall .q {
+  font-family: var(--sans);
+  font-size: 0.92rem;
+  font-weight: 600;
+  line-height: 1.5;
+  margin: 0 0 0.9rem;
+}
+
+.quiz .q::before, .recall .q::before {
+  content: "RECALL";
+  display: block;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--accent);
+  margin-bottom: 0.45rem;
+}
+
+/* ── Multiple choice ──────────────────────────────────── */
+
+.opts { display: flex; flex-direction: column; gap: 0.45rem; }
+
+.opt {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  line-height: 1.45;
+  text-align: left;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  padding: 0.6rem 0.8rem;
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s;
+}
+.opt:hover:not(:disabled) { border-color: var(--ink-faint); background: var(--paper-warm); }
+.opt:disabled { cursor: default; opacity: 0.55; }
+.opt.chosen.right {
+  border-color: var(--ok);
+  background: var(--ok-dim);
+  opacity: 1;
+  font-weight: 600;
+}
+.opt.chosen.wrong { border-color: var(--accent); background: var(--accent-dim); }
+
+.feedback {
+  display: none;
+  font-size: 0.88rem;
+  line-height: 1.5;
+  margin-top: 0.9rem;
+  padding: 0.7rem 0.9rem;
+  border-radius: 4px;
+}
+.feedback.show { display: block; }
+.feedback.right { background: var(--ok-dim);     border-left: 3px solid var(--ok); }
+.feedback.wrong { background: var(--accent-dim); border-left: 3px solid var(--accent); }
+
+/* ── Free recall ──────────────────────────────────────── */
+
+.recall textarea {
+  width: 100%;
+  min-height: 4.5rem;
+  font-family: var(--sans);
+  font-size: 0.88rem;
+  line-height: 1.5;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  padding: 0.6rem 0.75rem;
+  resize: vertical;
+  margin-bottom: 0.7rem;
+}
+.recall textarea:focus { outline: none; border-color: var(--accent); }
+.recall textarea.nudge {
+  border-color: var(--accent);
+  animation: nudge 0.32s ease-in-out 2;
+}
+@keyframes nudge {
+  0%, 100% { transform: translateX(0); }
+  25%      { transform: translateX(-3px); }
+  75%      { transform: translateX(3px); }
+}
+
+.reveal-btn {
+  font-family: var(--sans);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--paper);
+  background: var(--ink);
+  border: none;
+  border-radius: 4px;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+}
+.reveal-btn:hover { background: var(--accent); }
+
+.recall-answer {
+  display: none;
+  font-size: 0.9rem;
+  line-height: 1.55;
+  background: var(--ok-dim);
+  border-left: 3px solid var(--ok);
+  border-radius: 0 4px 4px 0;
+  padding: 0.8rem 1rem;
+}
+.recall-answer.show { display: block; }
+.recall-answer p:last-child { margin-bottom: 0; }
+
+@media print {
+  .opt { opacity: 1 !important; }
+  .feedback, .recall-answer { display: block !important; }
+  .reveal-btn, .recall textarea { display: none; }
+}

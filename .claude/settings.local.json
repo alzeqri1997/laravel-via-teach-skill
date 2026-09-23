@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(php -v)",
+      "Bash(composer -V)",
+      "Bash(laravel -V)",
+      "Bash(mysql --version)",
+      "WebSearch"
+    ]
+  }
+}

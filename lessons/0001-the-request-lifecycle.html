@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 1 · What Happens Before Your Fetch Resolves</title>
+<link rel="stylesheet" href="../assets/course.css">
+<link rel="stylesheet" href="../assets/quiz.css">
+</head>
+<body>
+
+<header class="masthead">
+  <p class="eyebrow">Lesson 01 · Laravel Foundations</p>
+  <h1>What Happens Before Your <code>fetch()</code> Resolves</h1>
+  <p class="standfirst">You have spent four years calling endpoints. Today you learn what is
+  on the other end of the wire — the seven steps between a URL and a response.</p>
+  <p class="meta">Laravel 13.x · ~20 minutes · Prerequisite: none</p>
+</header>
+
+<div class="callout bridge">
+  <span class="label">Why this lesson first</span>
+  <p>Every Laravel concept you will ever learn — middleware, controllers, Eloquent, validation,
+  tenant scoping — is a <em>stop on this one path</em>. Learn the path and each new concept
+  becomes "ah, that's the fourth step," rather than another disconnected term. Skip it and you
+  will be memorising vocabulary forever.</p>
+</div>
+
+<h2><span class="num">1</span>The thing you already know, from the other side</h2>
+
+<p>When you write this in Vue:</p>
+
+<p class="filename">HalaqaList.vue</p>
+<pre><code>const res  = await fetch('/api/halaqas/42')
+const data = await res.json()</code></pre>
+
+<p>…you think of the server as a black box that takes a URL and returns JSON. That box is not
+mysterious. It is a <strong>pipeline with seven stages</strong>, and in Laravel every stage is
+a file you can open and read.</p>
+
+<p>Here is the whole thing. Do not memorise it yet — just look at the shape:</p>
+
+<pre><code>  ①  Browser sends    GET /halaqas/42
+        ↓
+  ②  public/index.php     ← the ONLY entry point. Every request. No exceptions.
+        ↓
+  ③  Bootstrap            ← framework wakes up, reads .env, loads config
+        ↓
+  ④  Router               ← "which code handles /halaqas/42?"   routes/web.php
+        ↓
+  ⑤  Middleware           ← gatekeepers: logged in? CSRF ok? which tenant?
+        ↓
+  ⑥  Controller           ← YOUR code. Asks the model for data.
+        ↓         ↕
+        ↓      Model / Database   ← Eloquent builds SQL, runs it
+        ↓
+  ⑦  Response             ← Blade page or JSON, sent back to the browser
+        ↓
+     Your await resolves.</code></pre>
+
+<div class="callout note">
+  <span class="label">The one that surprises frontend developers</span>
+  <p>Stage ② is the shock. In a Vue SPA your app boots <em>once</em> and lives in memory while
+  the user clicks around. In PHP, <strong>the entire application boots, handles one request,
+  and dies</strong> — then boots again from scratch for the next one. There is no long-lived
+  memory between requests. This is why Laravel has sessions, caches, and databases: they are
+  how state survives a process that is constantly being destroyed.</p>
+</div>
+
+<h2><span class="num">2</span>Your frontend knowledge, translated</h2>
+
+<p>You are not starting from zero. You already own the concepts — under different names:</p>
+
+<table>
+  <thead>
+    <tr><th style="width:30%">You know this</th><th style="width:26%">Laravel calls it</th><th>Where the analogy breaks</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Vue Router routes</td>
+      <td><code>routes/web.php</code></td>
+      <td>Runs on the server before any HTML exists. Matching happens once, then the process dies.</td>
+    </tr>
+    <tr>
+      <td>Navigation guards</td>
+      <td>Middleware</td>
+      <td>Genuinely enforces security. A client guard is a suggestion; middleware is the real lock.</td>
+    </tr>
+    <tr>
+      <td>Component <code>&lt;template&gt;</code></td>
+      <td>Blade view</td>
+      <td>Rendered to a string on the server and shipped as text. No reactivity, no re-render.</td>
+    </tr>
+    <tr>
+      <td>API client / composable</td>
+      <td>Eloquent model</td>
+      <td>Talks straight to the database. No network hop, so a sloppy loop costs you real queries.</td>
+    </tr>
+    <tr>
+      <td>TypeScript interface</td>
+      <td>Migration</td>
+      <td>Actually creates the tables. It is executable schema, not a compile-time promise.</td>
+    </tr>
+    <tr>
+      <td>Zod / form validation</td>
+      <td>Form Request</td>
+      <td>Server-side, so users cannot bypass it with devtools. Yours is UX; this is truth.</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout hazard">
+  <span class="label">The theme worth internalising</span>
+  <p>Notice the pattern in that last column. Almost every frontend equivalent is
+  <em>advisory</em> — a user with devtools can defeat it. The server-side version is
+  <em>authoritative</em>. This is the single biggest mental shift in moving to backend work:
+  your code stops being a helpful suggestion and becomes the thing that actually decides.</p>
+</div>
+
+<h2><span class="num">3</span>Reading a real route</h2>
+
+<p>Here is roughly what a route in your halaqa codebase looks like. Four lines, and every
+stage from section 1 is visible in it:</p>
+
+<p class="filename">routes/web.php</p>
+<pre><code>Route::get('/halaqas/{halaqa}', [HalaqaController::class, 'show'])
+    -&gt;middleware(['auth', 'tenant'])
+    -&gt;name('halaqas.show');</code></pre>
+
+<p>Read left to right, it says:</p>
+
+<ul>
+  <li><code>Route::get</code> — when a <strong>GET</strong> request arrives (stage ④)</li>
+  <li><code>/halaqas/{halaqa}</code> — matching this URL, where <code>{halaqa}</code> is a
+      wildcard captured as a parameter</li>
+  <li><code>[HalaqaController::class, 'show']</code> — run the <code>show</code> method on
+      <code>HalaqaController</code> (stage ⑥)</li>
+  <li><code>-&gt;middleware(['auth', 'tenant'])</code> — but first, pass through two gatekeepers:
+      is this user logged in, and which tenant do they belong to (stage ⑤)</li>
+  <li><code>-&gt;name('halaqas.show')</code> — a nickname, so other code can build this URL
+      without hardcoding the string</li>
+</ul>
+
+<div class="callout hazard">
+  <span class="label">Mission-critical: that <code>tenant</code> middleware</span>
+  <p>Your work application is <strong>multi-tenant</strong> — one codebase serving many separate
+  organizations, each seeing only its own halaqas. That <code>'tenant'</code> middleware is what
+  establishes "who is asking" before any of your code runs. Almost every serious bug in a
+  multi-tenant app is data leaking between tenants because something ran <em>outside</em> that
+  boundary. You do not need to understand the mechanism yet. You need to know it exists, and
+  treat it with respect.</p>
+</div>
+
+<h2><span class="num">4</span>Retrieval practice</h2>
+
+<p>Answer from memory before scrolling back. Getting one wrong and correcting it builds more
+durable memory than getting it right easily — that is the point of the difficulty.</p>
+
+<div class="quiz"
+     data-answer="c"
+     data-why="Every request boots the framework fresh, is handled, and the process dies. Nothing stays in memory between requests."
+     data-hintA="That is the SPA model — boot once, live in memory. PHP works the other way round."
+     data-hintB="Close, but the router is stage 4. Something has to boot the framework before routing can happen."
+     data-hintD="Middleware runs per request, but it is not the first thing. Something must boot before it.">
+  <p class="q">A user loads two pages in a row. What happens to the Laravel application between the first response and the second request?</p>
+  <div class="opts">
+    <button class="opt" data-opt="a">It stays in memory and waits for the next request</button>
+    <button class="opt" data-opt="b">It keeps the router loaded but clears all of the data</button>
+    <button class="opt" data-opt="c">It shuts down entirely and boots again from scratch</button>
+    <button class="opt" data-opt="d">It pauses the middleware and resumes on the request</button>
+  </div>
+  <div class="feedback"></div>
+</div>
+
+<div class="quiz"
+     data-answer="b"
+     data-why="Middleware sits between routing and your controller — it decides whether the request is allowed to proceed at all."
+     data-hintA="The controller is where your handling code runs, after the gatekeepers have approved the request."
+     data-hintC="The model talks to the database, and is reached from inside the controller."
+     data-hintD="The router picks the destination, but it does not enforce whether you are allowed there.">
+  <p class="q">A logged-out user requests <code>/halaqas/42</code>, which requires authentication. Which stage stops them?</p>
+  <div class="opts">
+    <button class="opt" data-opt="a">The controller, by checking the user</button>
+    <button class="opt" data-opt="b">The middleware, before the controller</button>
+    <button class="opt" data-opt="c">The model, when it queries data</button>
+    <button class="opt" data-opt="d">The router, when it matches the path</button>
+  </div>
+  <div class="feedback"></div>
+</div>
+
+<div class="recall">
+  <p class="q">Without looking: name as many of the seven stages as you can, in order, from browser to response.</p>
+  <textarea placeholder="Type them out — order matters more than exact names."></textarea>
+  <button class="reveal-btn">Check my answer</button>
+  <div class="recall-answer">
+    <p><strong>1.</strong> Browser sends request &nbsp;<strong>2.</strong> <code>public/index.php</code> entry point &nbsp;<strong>3.</strong> Bootstrap &nbsp;<strong>4.</strong> Router &nbsp;<strong>5.</strong> Middleware &nbsp;<strong>6.</strong> Controller (↔ Model ↔ Database) &nbsp;<strong>7.</strong> Response</p>
+    <p>Got 5 or more in roughly the right order? That is a pass — this comes back in later lessons,
+    and spaced repetition is what will actually cement it. Fewer than 5? Re-read section 1 once,
+    then try again tomorrow rather than right now. The gap is what does the work.</p>
+  </div>
+</div>
+
+<h2><span class="num">5</span>Your task before Lesson 2</h2>
+
+<p>This one is not optional — it decides what I teach you next. I need facts about
+<strong>your work codebase</strong>, because its Laravel version and multi-tenancy approach
+change the entire path. Open a terminal in the project folder and run:</p>
+
+<pre><code>php artisan --version
+php artisan route:list --path=halaqa
+composer show | grep -i tenan</code></pre>
+
+<p>On Windows PowerShell, use <code>composer show | Select-String tenan</code> for the last one.
+Then have a quick look for these:</p>
+
+<ul>
+  <li>Does <code>resources/js/</code> contain <code>.vue</code> files? (Inertia + Vue — your Vue
+      background transfers almost completely)</li>
+  <li>Does <code>resources/views/</code> contain many <code>.blade.php</code> files? (server-rendered)</li>
+  <li>Is there a <code>tests/</code> folder with real files in it?</li>
+</ul>
+
+<p><strong>Paste whatever you get back to me.</strong> If a command errors, paste the error —
+that is information too. If you cannot access the repo right now, say so and we will build a
+small halaqa-shaped sandbox locally instead, and you can bring the answers later.</p>
+
+<div class="source">
+  <span class="label">Primary source — read this next</span>
+  <p><a href="https://laravel.com/docs/13.x/lifecycle">Laravel 13.x — Request Lifecycle</a>.
+  Roughly ten minutes. It is the same seven stages, told by the people who built it, in more
+  depth than this lesson. Read it once; do not try to absorb the service-container section yet
+  — that lands in a later lesson.</p>
+  <p>Reference: <a href="https://laravel.com/docs/13.x/routing">Routing</a> ·
+  <a href="https://laravel.com/docs/13.x/middleware">Middleware</a> ·
+  full list in <a href="../RESOURCES.md">RESOURCES.md</a>.</p>
+</div>
+
+<div class="ask-teacher">
+  <span class="label">Ask your teacher</span>
+  <p>I am your teacher for this course — not a static document. If any part of this was unclear,
+  ask me. Genuinely useful questions right now: <em>"Why does PHP die between requests when Node
+  doesn't?"</em> · <em>"What is actually inside <code>public/index.php</code>?"</em> ·
+  <em>"Show me what a controller looks like."</em> · <em>"I ran the commands and got this — what
+  does it mean?"</em></p>
+  <p>Confusion is signal, not failure. If something did not land, that tells me the lesson was
+  mis-pitched and I will re-teach it differently.</p>
+</div>
+
+<div class="footer">
+  <p class="meta">
+    <strong>Lesson 1 of an ongoing course</strong> · Next: reading a controller and tracing one
+    real feature end-to-end through your codebase.<br>
+    Workspace: <a href="../MISSION.md">MISSION.md</a> ·
+    <a href="../RESOURCES.md">RESOURCES.md</a> ·
+    <a href="../reference/0001-request-lifecycle-cheatsheet.html">Cheat sheet →</a>
+  </p>
+</div>
+
+<script src="../assets/quiz.js"></script>
+</body>
+</html>

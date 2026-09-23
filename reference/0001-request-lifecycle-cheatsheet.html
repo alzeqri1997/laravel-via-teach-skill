@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reference · Laravel Request Lifecycle & Project Map</title>
+<link rel="stylesheet" href="../assets/course.css">
+<style>
+  /* Reference docs run denser than lessons — this is for scanning, not reading. */
+  body { max-width: 52rem; font-size: 17px; }
+  .map { font-family: var(--mono); font-size: 0.74rem; line-height: 1.75; }
+  .map .c { color: var(--ink-faint); }
+  .map .h { color: var(--accent); font-weight: 700; }
+  table { font-size: 0.82rem; }
+  td code { font-size: 0.76em; }
+  h2 { margin-top: 2.2rem; }
+  .two-col { columns: 2; column-gap: 2rem; }
+  .two-col > * { break-inside: avoid; }
+  @media (max-width: 640px) { .two-col { columns: 1; } }
+</style>
+</head>
+<body>
+
+<header class="masthead">
+  <p class="eyebrow">Reference 01 · keep this open while you work</p>
+  <h1>Request Lifecycle &amp; Project Map</h1>
+  <p class="standfirst">The seven stages, the folders that matter, and the commands worth
+  memorising. Built to print on two sides.</p>
+  <p class="meta">Laravel 13.x · from <a href="../lessons/0001-the-request-lifecycle.html">Lesson 1</a></p>
+</header>
+
+<h2>The seven stages</h2>
+
+<pre class="map"><span class="c">①</span> <span class="h">REQUEST</span>        GET /halaqas/42
+<span class="c">     ↓</span>
+<span class="c">②</span> <span class="h">ENTRY</span>          public/index.php      <span class="c">— single entry point, always</span>
+<span class="c">     ↓</span>
+<span class="c">③</span> <span class="h">BOOTSTRAP</span>      bootstrap/app.php     <span class="c">— .env, config, providers</span>
+<span class="c">     ↓</span>
+<span class="c">④</span> <span class="h">ROUTER</span>         routes/web.php        <span class="c">— which code handles this URL?</span>
+<span class="c">     ↓</span>                routes/api.php        <span class="c">— stateless / token-auth routes</span>
+<span class="c">⑤</span> <span class="h">MIDDLEWARE</span>     app/Http/Middleware/  <span class="c">— auth? csrf? WHICH TENANT?</span>
+<span class="c">     ↓</span>
+<span class="c">⑥</span> <span class="h">CONTROLLER</span>     app/Http/Controllers/ <span class="c">— your code runs here</span>
+<span class="c">     ↕</span>
+   <span class="h">MODEL</span>          app/Models/           <span class="c">— Eloquent → SQL → database</span>
+<span class="c">     ↓</span>
+<span class="c">⑦</span> <span class="h">RESPONSE</span>       resources/views/      <span class="c">— Blade HTML, or JSON</span>
+<span class="c">     ↓</span>
+   <span class="h">PROCESS DIES</span>   <span class="c">— nothing survives except session / cache / DB</span></pre>
+
+<div class="callout hazard">
+  <span class="label">Rule of thumb</span>
+  <p>Lost in an unfamiliar codebase? Find the <strong>route</strong> first. It names the
+  controller, which names the model. The route file is the index to everything else.</p>
+</div>
+
+<h2>Folder map — what lives where</h2>
+
+<table>
+  <thead><tr><th style="width:34%">Path</th><th>What is in it</th></tr></thead>
+  <tbody>
+    <tr><td><code>routes/web.php</code></td><td>Browser routes. Sessions + CSRF. Start reading here.</td></tr>
+    <tr><td><code>routes/api.php</code></td><td>API routes. Stateless, token auth, no session.</td></tr>
+    <tr><td><code>app/Http/Controllers/</code></td><td>Request handlers. The methods routes point at.</td></tr>
+    <tr><td><code>app/Http/Middleware/</code></td><td>Gatekeepers. Auth, tenant resolution, rate limits.</td></tr>
+    <tr><td><code>app/Http/Requests/</code></td><td>Form Requests — validation rules, extracted from controllers.</td></tr>
+    <tr><td><code>app/Models/</code></td><td>Eloquent models. One class ≈ one table.</td></tr>
+    <tr><td><code>app/Policies/</code></td><td>Authorization: <em>may this user touch this record?</em></td></tr>
+    <tr><td><code>database/migrations/</code></td><td>Executable schema history, in timestamp order.</td></tr>
+    <tr><td><code>database/seeders/</code></td><td>Fake/initial data for local development.</td></tr>
+    <tr><td><code>database/factories/</code></td><td>Model blueprints for tests. Invaluable later.</td></tr>
+    <tr><td><code>resources/views/</code></td><td>Blade templates (<code>.blade.php</code>).</td></tr>
+    <tr><td><code>resources/js/</code></td><td>Vue/React source, if the app uses Inertia or a bundled SPA.</td></tr>
+    <tr><td><code>config/</code></td><td>Config arrays. Read <code>.env</code>; never hardcode secrets.</td></tr>
+    <tr><td><code>tests/</code></td><td>Feature + Unit tests. Your safety net for changing code.</td></tr>
+    <tr><td><code>.env</code></td><td>Secrets and per-machine settings. <strong>Never committed.</strong></td></tr>
+    <tr><td><code>composer.json</code></td><td>PHP dependencies. Tells you which packages the app leans on.</td></tr>
+  </tbody>
+</table>
+
+<h2>Artisan commands worth knowing by heart</h2>
+
+<div class="two-col">
+<p><strong>Orientation — safe to run anywhere</strong></p>
+<pre><code>php artisan --version
+php artisan route:list
+php artisan route:list --path=halaqa
+php artisan about</code></pre>
+
+<p><strong>Local development</strong></p>
+<pre><code>php artisan serve
+php artisan tinker        # REPL: poke at models live
+php artisan migrate
+php artisan migrate:fresh --seed</code></pre>
+
+<p><strong>Generating files</strong></p>
+<pre><code>php artisan make:model Halaqa -mfc
+php artisan make:controller HalaqaController
+php artisan make:migration add_x_to_y_table
+php artisan make:request StoreHalaqaRequest
+php artisan make:test HalaqaTest</code></pre>
+
+<p><strong>When things behave strangely</strong></p>
+<pre><code>php artisan optimize:clear
+php artisan config:clear
+php artisan tail          # live log stream</code></pre>
+</div>
+
+<div class="callout note">
+  <span class="label">On <code>-mfc</code></span>
+  <p><code>make:model Halaqa -mfc</code> generates the model plus its <strong>m</strong>igration,
+  <strong>f</strong>actory and <strong>c</strong>ontroller in one shot. It is the single most
+  useful flag combination in Artisan.</p>
+</div>
+
+<div class="callout hazard">
+  <span class="label">Never run against production</span>
+  <p><code>migrate:fresh</code> and <code>migrate:refresh</code> <strong>drop every table</strong>.
+  They are local-sandbox commands. Check which database <code>.env</code> points at before either
+  one leaves your fingers.</p>
+</div>
+
+<h2>Frontend → Laravel translation</h2>
+
+<table>
+  <thead><tr><th style="width:32%">Frontend</th><th style="width:30%">Laravel</th><th>Key difference</th></tr></thead>
+  <tbody>
+    <tr><td>Vue Router</td><td><code>routes/web.php</code></td><td>Server-side, matched once per request</td></tr>
+    <tr><td>Navigation guard</td><td>Middleware</td><td>Actually enforced, not advisory</td></tr>
+    <tr><td>Component template</td><td>Blade view</td><td>Rendered to a string, then discarded</td></tr>
+    <tr><td>API client</td><td>Eloquent model</td><td>Direct database access, no network hop</td></tr>
+    <tr><td>TS interface</td><td>Migration</td><td>Executable — it builds the real table</td></tr>
+    <tr><td>Zod schema</td><td>Form Request</td><td>Cannot be bypassed from the client</td></tr>
+    <tr><td>Route meta / roles</td><td>Policy</td><td>Per-record authorization, server-enforced</td></tr>
+    <tr><td>Pinia / state store</td><td>Session + database</td><td>Memory does not persist between requests</td></tr>
+  </tbody>
+</table>
+
+<h2>Multi-tenancy — the standing hazard</h2>
+
+<p>One codebase, many organizations, one database. Rows carry a <code>tenant_id</code>, and a
+<strong>global scope</strong> silently appends <code>WHERE tenant_id = ?</code> to every query on
+a tenant-aware model.</p>
+
+<pre><code>Halaqa::all()                    <span class="c">// scoped — safe</span>
+Halaqa::withoutGlobalScopes()-&gt;get()   <span class="c">// UNSCOPED — every tenant. Danger.</span>
+DB::table('halaqas')-&gt;get()            <span class="c">// UNSCOPED — bypasses Eloquent entirely.</span></code></pre>
+
+<div class="callout hazard">
+  <span class="label">Two habits that prevent the worst bug in this codebase</span>
+  <p><strong>1.</strong> Prefer Eloquent models over the <code>DB::</code> query builder. The
+  query builder knows nothing about tenants.<br>
+  <strong>2.</strong> Treat <code>withoutGlobalScopes()</code> as a red flag in review — yours or
+  anyone's. It is occasionally correct and usually a leak.</p>
+  <p>Confirm the actual mechanism in your codebase before trusting this page:
+  <code>composer show | Select-String tenan</code> reveals whether it uses
+  <code>stancl/tenancy</code>, <code>spatie/laravel-multitenancy</code>, or a hand-rolled scope.</p>
+</div>
+
+<div class="source">
+  <span class="label">Sources</span>
+  <p><a href="https://laravel.com/docs/13.x/lifecycle">Request Lifecycle</a> ·
+  <a href="https://laravel.com/docs/13.x/structure">Directory Structure</a> ·
+  <a href="https://laravel.com/docs/13.x/artisan">Artisan Console</a> ·
+  <a href="https://laravel.com/docs/13.x/eloquent#global-scopes">Global Scopes</a></p>
+</div>
+
+<div class="footer">
+  <p class="meta">Reference 01 · from <a href="../lessons/0001-the-request-lifecycle.html">Lesson 1</a>
+  · <a href="../RESOURCES.md">All resources</a></p>
+</div>
+
+</body>
+</html>
