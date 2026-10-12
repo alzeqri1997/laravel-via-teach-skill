@@ -1,9 +1,10 @@
-# Mission: Laravel
+# Mission: Laravel (Ethaaf)
 
 ## Why
 
 Ahmed is a frontend developer (~4 years) whose workplace runs a multi-tenant Laravel
-application for managing Quran memorization circles (halaqas). He wants to stop being
+application for managing Quran memorization circles (halaqas) — **Ethaaf**, at
+`C:\laragon\www\ethaaf`. He wants to stop being
 frontend-only and start picking up backend tickets in that existing codebase — reading it
 confidently, changing it safely, and shipping features end-to-end. The goal is a promotion
 into full-stack work at his current job, not a job hunt elsewhere.
@@ -14,8 +15,10 @@ into full-stack work at his current job, not a job hunt elsewhere.
 - Can trace a feature end-to-end: URL → route → middleware → controller → model → database → JSON response
 - Can add a new field to an existing endpoint (migration, model, validation, API Resource) unaided
 - Can build a new API resource endpoint (a new entity in the halaqa domain) from scratch
-- Understands how tenant isolation works in his codebase and never writes a query that leaks across tenants
-- Can write a test that proves a change works before opening a pull request
+- Understands how `TenantScope` works, knows when it is inactive, and never writes a query that
+  leaks across tenants
+- Can write a test that proves a change works before opening a pull request (suite exists:
+  `./vendor/bin/phpunit`, plus Pint and PHPStan)
 - Ships a real pull request to the work repo that gets merged
 
 ## Constraints
@@ -27,7 +30,11 @@ into full-stack work at his current job, not a job hunt elsewhere.
 - Learning against a real production codebase he does not control — cannot break it
 - **The codebase is API-only: Laravel serves JSON, the frontend is a separate SPA** (confirmed
   2026-09-23, LR-0003). His years of consuming this API are a direct asset.
-- Repo access is intermittent — lessons must work without it
+- **Ethaaf runs Laravel 10.50.2** — past EOL. Read `/docs/10.x/`, never 13.x (LR-0004)
+- **Single-database tenancy** (`stancl/tenancy` 3.8): one DB, a `tenant_id` column, and a global
+  scope that is a **no-op outside tenant context**. This is the primary hazard.
+- Service/Repository architecture; code lives in both `app/` and `Modules/`
+- **Repo access granted 2026-10-11** — lessons now use real files
 
 ## Out of scope
 

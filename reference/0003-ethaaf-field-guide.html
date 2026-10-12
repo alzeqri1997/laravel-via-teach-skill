@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reference 03 · Ethaaf Field Guide</title>
+<link rel="stylesheet" href="../assets/course.css">
+<link rel="stylesheet" href="../assets/trace.css">
+</head>
+<body>
+
+<header class="masthead">
+  <p class="eyebrow">Reference 03 · Ethaaf</p>
+  <h1>Ethaaf Field Guide</h1>
+  <p class="standfirst">Where things live, how tenancy is enforced, and the rules that keep one
+  mosque's data out of another's. Print this one.</p>
+  <p class="meta">Laravel 10.50.2 · verified against the repo 2026-10-11</p>
+</header>
+
+<h2><span class="num">1</span>Stack identity card</h2>
+
+<table>
+  <thead><tr><th style="width:34%">Thing</th><th>Value</th></tr></thead>
+  <tbody>
+    <tr><td>Framework</td><td>Laravel <strong>10.50.2</strong> — read <code>/docs/10.x/</code></td></tr>
+    <tr><td>PHP</td><td>8.3.30 local; composer requires <code>^8.1</code></td></tr>
+    <tr><td>Tenancy</td><td><code>stancl/tenancy</code> ^3.8 — <strong>single-database</strong></td></tr>
+    <tr><td>Modules</td><td><code>nwidart/laravel-modules</code> ^10.0</td></tr>
+    <tr><td>API auth</td><td><code>laravel/sanctum</code> ^3.2</td></tr>
+    <tr><td>Permissions</td><td><code>spatie/laravel-permission</code> ^5.9</td></tr>
+    <tr><td>Query filters</td><td><code>spatie/laravel-query-builder</code> ^5.0</td></tr>
+    <tr><td>DTOs</td><td><code>spatie/laravel-data</code> ^3.0</td></tr>
+    <tr><td>Admin panel</td><td>Filament ^3.0 at <code>/admin</code></td></tr>
+    <tr><td>Queues / monitoring</td><td>Horizon, Telescope, Sentry, PostHog</td></tr>
+    <tr><td>Static analysis</td><td>PHPStan + deptrac + Pint</td></tr>
+  </tbody>
+</table>
+
+<div class="callout hazard">
+  <span class="label">EOL</span>
+  <p>Laravel 10 security support ended <strong>4 Feb 2025</strong>. Worth raising with the team;
+  not yours to fix.</p>
+</div>
+
+<h2><span class="num">2</span>Tenancy — the rules</h2>
+
+<p><strong>One database.</strong> No <code>tenant{id}</code> databases;
+<code>DatabaseTenancyBootstrapper</code> is commented out and
+<code>database/migrations/tenant/</code> is empty. Tables are separated by a
+<code>tenant_id</code> <strong>column</strong>.</p>
+
+<p>Enforced by <code>App\Models\Concerns\BelongsToTenant</code>, which installs
+<code>App\Models\Scopes\TenantScope</code> and auto-fills <code>tenant_id</code> on create.</p>
+
+<table>
+  <thead><tr><th style="width:42%">Situation</th><th>Is the scope protecting you?</th></tr></thead>
+  <tbody>
+    <tr><td>API request on a tenant route</td><td><strong>Yes</strong> — tenancy initialized</td></tr>
+    <tr><td>Filament admin panel</td><td><strong>No</strong> — central context</td></tr>
+    <tr><td>Plain queue job</td><td><strong>No</strong> — unless wrapped in <code>$tenant-&gt;run()</code></td></tr>
+    <tr><td>Console command / scheduler</td><td><strong>No</strong> — central context</td></tr>
+    <tr><td>Inside <code>$tenant-&gt;run(...)</code></td><td><strong>Yes</strong> — scope has a tenant</td></tr>
+  </tbody>
+</table>
+
+<div class="callout hazard">
+  <span class="label">Three rules, non-negotiable</span>
+  <p><strong>1.</strong> Never call bare <code>withoutGlobalScopes()</code> on a tenant model —
+  it strips <code>TenantScope</code> plus the actor scopes and silently returns all tenants.
+  Remove scopes <strong>by class name</strong>.<br>
+  <strong>2.</strong> Bulk <code>insert()</code> bypasses the <code>creating</code> hook —
+  supply <code>tenant_id</code> by hand.<br>
+  <strong>3.</strong> When a scope is deliberately dropped, something explicit must replace it
+  (see <code>forTenants(...)</code>). A drop with no replacement is a leak.</p>
+</div>
+
+<p>Actor scopes that also ride along: <code>MosqueAdminScope</code>,
+<code>AdminStudentsScope</code>, <code>ParentStudentScope</code>,
+<code>SectionReviewingScope</code>.</p>
+
+<h2><span class="num">3</span>Where code lives</h2>
+
+<table>
+  <thead><tr><th style="width:42%">Path</th><th>Holds</th></tr></thead>
+  <tbody>
+    <tr><td><code>routes/api/v1/…</code></td><td>API routes, grouped by surface</td></tr>
+    <tr><td><code>app/Http/Controllers/Api/V1/…</code></td><td>Thin HTTP handlers</td></tr>
+    <tr><td><code>app/Services/</code></td><td><strong>Business logic</strong></td></tr>
+    <tr><td><code>app/Repositories/</code></td><td><strong>Data access / queries</strong></td></tr>
+    <tr><td><code>app/Http/Resources/</code></td><td>JSON shaping</td></tr>
+    <tr><td><code>app/Models/</code></td><td>Core entities</td></tr>
+    <tr><td><code>Modules/{Student,Teacher,Section,Progress,Report,Admin}/</code></td><td>Feature modules — own routes, controllers, <code>Entities/</code>, tests</td></tr>
+    <tr><td><code>app/Filament/</code></td><td>Admin panel resources + widgets</td></tr>
+    <tr><td><code>app/DTO/</code>, <code>app/Data/</code></td><td>DTOs and Spatie Data objects</td></tr>
+    <tr><td><code>app/Helpers/</code></td><td>Auto-loaded global helpers</td></tr>
+    <tr><td><code>tests/{Unit,Feature,Architecture}</code></td><td>The test suite</td></tr>
+  </tbody>
+</table>
+
+<div class="callout note">
+  <span class="label">Two places to look, always</span>
+  <p>A student feature may live in <code>app/</code> <em>or</em> in
+  <code>Modules/Student/</code>. When a search comes up empty, search the other tree.</p>
+</div>
+
+<h2><span class="num">4</span>Route surfaces</h2>
+
+<table>
+  <thead><tr><th style="width:38%">Prefix</th><th>Audience</th></tr></thead>
+  <tbody>
+    <tr><td><code>/api/v1/association/…</code></td><td>Association — spans several مجمعات</td></tr>
+    <tr><td><code>/api/v1/central/…</code></td><td>Central app — landing, quotes, supporters</td></tr>
+    <tr><td><code>/api/v1/dashboard/…</code></td><td>Tenant dashboard</td></tr>
+    <tr><td><code>/api/v1/mobile/…</code></td><td>Mobile apps — admin / parent</td></tr>
+    <tr><td><code>/api/v1/integration/…</code></td><td>External integrations</td></tr>
+    <tr><td><code>routes/tenant.php</code></td><td>Tenant web routes</td></tr>
+  </tbody>
+</table>
+
+<h2><span class="num">5</span>The reading order for a ticket</h2>
+
+<div class="trace">
+  <div class="trace-step">
+    <span class="trace-label">route:list</span>
+    <p>Find the real URL and its middleware. URLs are assembled from nested prefixes and cannot
+    be found by searching for the path.</p>
+  </div>
+  <div class="trace-step">
+    <span class="trace-label">Route file</span>
+    <p>Which permission guards it (<code>associationPermission:…</code>), which controller.</p>
+  </div>
+  <div class="trace-step">
+    <span class="trace-label">Controller</span>
+    <p>Thin. Note the injected Service in the constructor.</p>
+  </div>
+  <div class="trace-step">
+    <span class="trace-label">Service</span>
+    <p>Business decisions — and often the tenancy commentary worth reading.</p>
+  </div>
+  <div class="trace-step">
+    <span class="trace-label">Repository</span>
+    <p>The actual query, filters, and the isolation boundary.</p>
+  </div>
+  <div class="trace-step">
+    <span class="trace-label">Resource</span>
+    <p>Which columns reach the client. Where a "missing field" bug almost always is.</p>
+  </div>
+</div>
+
+<h2><span class="num">6</span>Commands</h2>
+
+<table>
+  <thead><tr><th style="width:52%">Command</th><th>Does</th></tr></thead>
+  <tbody>
+    <tr><td><code>php artisan route:list --path=X --except-vendor</code></td><td>Real routes for a surface</td></tr>
+    <tr><td><code>php artisan migrate</code></td><td>All migrations — no tenant-only set exists</td></tr>
+    <tr><td><code>./vendor/bin/phpunit</code></td><td>Whole suite</td></tr>
+    <tr><td><code>./vendor/bin/phpunit --testsuite Feature</code></td><td>Feature tests only</td></tr>
+    <tr><td><code>./vendor/bin/pint</code></td><td>Format to house style — run before every PR</td></tr>
+    <tr><td><code>php artisan tinker</code></td><td>REPL against the app</td></tr>
+  </tbody>
+</table>
+
+<h2><span class="num">7</span>Domain model</h2>
+
+<pre><code>Tenant (مجمع) → Mosques → Levels → Sections (حلقات) → Students
+Students  → Progress (pages), Attendance, Subscriptions
+Teachers  → assigned to Sections, have Evaluation/Measurement Forms
+Terms & Periods define the academic calendar
+Association → spans several Tenants</code></pre>
+
+<table>
+  <thead><tr><th style="width:26%">Arabic</th><th>In code</th></tr></thead>
+  <tbody>
+    <tr><td>مجمع</td><td>Tenant</td></tr>
+    <tr><td>حلقة / حلقات</td><td>Section(s)</td></tr>
+    <tr><td>الفرع</td><td>Branch — a grouping of مجمعات, <em>not</em> a student relation</td></tr>
+    <tr><td>الطلاب</td><td>Students</td></tr>
+    <tr><td>تاريخ الانضمام</td><td><code>approved_at</code></td></tr>
+  </tbody>
+</table>
+
+<h2><span class="num">8</span>PHP you will meet immediately</h2>
+
+<table>
+  <thead><tr><th style="width:30%">Syntax</th><th>Means</th></tr></thead>
+  <tbody>
+    <tr><td><code>?-&gt;</code></td><td>Nullsafe — JavaScript's <code>?.</code></td></tr>
+    <tr><td><code>??</code></td><td>Null coalescing — same as JS</td></tr>
+    <tr><td><code>__('key')</code></td><td>Translation lookup (<code>lang/</code>)</td></tr>
+    <tr><td><code>protected X $y</code> in constructor</td><td>Promoted property + injected dependency</td></tr>
+    <tr><td><code>use SomeTrait;</code> in a class</td><td>Mixes in shared methods</td></tr>
+    <tr><td><code>Foo::class</code></td><td>The class's name as a string</td></tr>
+    <tr><td><code>fn ($x) =&gt; $x-&gt;y</code></td><td>Arrow function — JS's <code>=&gt;</code></td></tr>
+  </tbody>
+</table>
+
+<div class="footer">
+  <p class="meta">
+    <strong>Reference 03</strong> · From
+    <a href="../lessons/0003-your-first-real-trace.html">Lesson 3</a> ·
+    <a href="0002-api-endpoint-anatomy.html">← Reference 02</a> ·
+    <a href="../RESOURCES.md">RESOURCES.md</a><br>
+    Source of truth: <code>C:\laragon\www\ethaaf\CLAUDE.md</code> — re-read it when this and the
+    repo disagree.
+  </p>
+</div>
+
+</body>
+</html>

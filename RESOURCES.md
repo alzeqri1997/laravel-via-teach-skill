@@ -1,5 +1,20 @@
 # Laravel Resources
 
+> **Version note (2026-10-11):** Ethaaf runs **Laravel 10.50.2**. Read `/docs/10.x/`.
+> Links below written as 13.x predate repo access — swap the version segment. See LR-0004.
+
+## The codebase itself — highest trust
+
+- **`C:\laragon\www\ethaaf\CLAUDE.md`**
+  Team-written architecture guide: tenancy model, module layout, service/repository pattern,
+  domain concepts. **Outranks every external resource** — it describes this exact code.
+- **`C:/laragon/www/ethaaf/tests/`**
+  Unit, Feature and Architecture suites. Existing tests are worked examples of how the team
+  expects code to be exercised — read one before writing one.
+- **Ethaaf route files** — `routes/api/v1/…`
+  Several have long explanatory header comments (see `association/students.php`). Unusually
+  well documented; read the comments, not just the code.
+
 ## Knowledge
 
 - [Laravel 13.x Official Documentation](https://laravel.com/docs/13.x)
@@ -34,11 +49,21 @@
   Community-maintained guide to modern PHP practice, no framework assumptions.
   Use for: filling PHP language gaps (namespaces, autoloading, types) without vendor bias.
 - [Tenancy for Laravel — Single-database tenancy](https://tenancyforlaravel.com/docs/v3/single-database-tenancy/)
-  Docs for `stancl/tenancy`, one of the two dominant multi-tenancy packages.
-  Use for: reference *if* the work codebase uses this package — check `composer.json` first.
-- [spatie/laravel-multitenancy](https://github.com/spatie/laravel-multitenancy)
-  The other dominant multi-tenancy package, from Spatie.
-  Use for: reference *if* the work codebase uses this one instead.
+  **CONFIRMED: this is Ethaaf's package and mode** (`stancl/tenancy` ^3.8).
+  Use for: the mechanism behind `TenantScope` and `BelongsToTenant`. Highest-priority external
+  resource for the mission.
+- [Eloquent — Query Scopes (10.x)](https://laravel.com/docs/10.x/eloquent#query-scopes)
+  Global and local scopes — the Laravel feature tenant isolation is built on.
+  Use for: understanding how a `WHERE tenant_id = ?` gets appended invisibly.
+- [spatie/laravel-permission](https://spatie.be/docs/laravel-permission/v5/introduction)
+  Roles and permissions. Ethaaf guards routes with `associationPermission:…`.
+  Use for: understanding why a logged-in user still gets a 403.
+- [spatie/laravel-query-builder](https://spatie.be/docs/laravel-query-builder/v5/introduction)
+  Filters, sorts and includes read from the query string. Used in Ethaaf's repositories.
+  Use for: when adding a filter to an existing list endpoint.
+- [Laravel Modules (nWidart)](https://docs.laravelmodules.com/)
+  The module system splitting code between `app/` and `Modules/`.
+  Use for: when a file is not where you expect it.
 
 ## Wisdom (Communities)
 
@@ -62,5 +87,10 @@
   approach** (package vs. hand-rolled), and **test setup**. Ahmed has no repo access yet.
 - **No SPA-side resource listed yet.** The frontend repo is separate; if its framework matters
   later (it is his home turf), note it here.
-- No Arabic-language Laravel resources vetted yet; may matter for domain vocabulary
-  (halaqa, tilawah, sanad, juz) if the codebase names things in transliterated Arabic.
+- **Laravel 10 is EOL** (security fixes ended 2025-02-04). Worth asking the team about upgrade
+  plans — it determines how long 10.x docs remain the right reference.
+- **No Laracasts series pinned to Laravel 10 yet.** The 2026 series targets 12+; differences are
+  mostly structural (skeleton, config) rather than conceptual, but flag this when recommending.
+- ~~No Arabic-language Laravel resources vetted~~ — **resolved from the codebase itself.**
+  Ethaaf uses Arabic domain terms inline (مجمع = Tenant, حلقة = Section, الفرع = Branch).
+  Glossary lives in Reference 03.

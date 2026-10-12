@@ -20,34 +20,45 @@
   `composer create-project` replaces the installer). Only worth fixing if it starts to bite.
 - **PHP 8.3.30 satisfies Laravel 13's 8.3+ requirement.** No upgrade needed.
 
-## Open questions blocking precision
+## Codebase: RESOLVED 2026-10-11
 
-Asked at the end of Lesson 1. **Question 3 answered 2026-09-23: API-only, separate SPA**
-(see LR-0003) — this was the one that reshaped the path. Still outstanding:
+Repo access granted: **`C:\laragon\www\ethaaf`**. All Lesson 1 questions answered — see LR-0004.
 
-1. Laravel version of the work codebase (`php artisan --version`)
-2. Multi-tenancy approach — `stancl/tenancy`, `spatie/laravel-multitenancy`, or hand-rolled
-3. ~~Frontend layer~~ — **answered: Laravel serves JSON, frontend is a separate SPA**
-4. Does it have a test suite?
+1. **Laravel 10.50.2** — NOT 13. Lessons 1–2 were taught against 13.x docs; corrected openly
+   at the top of Lesson 3. **Always read `/docs/10.x/` now.**
+2. **Multi-tenancy: `stancl/tenancy` 3.8, single-database**, separated by a `tenant_id` column
+3. **Frontend: API-only** + a Filament admin panel at `/admin`
+4. **Tests: yes** — Unit, Feature, Architecture. Plus PHPStan, deptrac, Pint.
 
-Ahmed has **no repo access** as of 2026-09-23, so lessons must stay runnable without it.
-Predict-then-verify tasks work well here and are being used deliberately.
+Extra findings: `nwidart/laravel-modules` (code in **both** `app/` and `Modules/`), Sanctum +
+`spatie/laravel-permission`, and a **Service/Repository** architecture with thin controllers.
 
-## Curriculum sketch (revised 2026-09-23 after LR-0003 — API-only)
+**`C:\laragon\www\ethaaf\CLAUDE.md` is the best teaching resource available** — a 122-line
+team-written architecture guide. Outranks any external tutorial.
 
-1. ✅ Request lifecycle — the spine everything hangs off
-2. ✅ Reading an API endpoint — the four files: route → controller → model → resource
-3. Eloquent — retrieval, relationships (halaqa → students → progress), and the **N+1 trap**
-   (explicitly teased at the end of Lesson 2 — he may ask about it first)
-4. Validation — Form Requests, taught through the **422 JSON payload** the SPA receives
-5. Migrations — adding a column, then surfacing it through the Resource (ties back to L2)
-6. Tenant scoping — global scopes, and how the codebase actually enforces isolation
-7. Testing — an endpoint test that lets him open a PR with confidence
-8. First real pull request
+### Standing teaching rule learned the hard way
+Never pitch a version before the codebase is known. Teach version-general, or ask. Two lessons
+were written against the wrong major version.
 
-**Blade is out of scope** — API-only codebase. Mention only for recognition.
-Interleave PHP syntax as needed rather than front-loading it. The lifecycle is now on a spaced
-schedule: taught L1, re-tested cold in L2, test again around L4.
+## Curriculum sketch (revised 2026-10-11 — grounded in Ethaaf)
+
+1. ✅ Request lifecycle
+2. ✅ Reading an API endpoint — the four files
+3. ✅ First real trace — Ethaaf's association students endpoint + the tenancy hazard
+4. Eloquent in Ethaaf — relationships, eager loading, **N+1** (read from real repository code)
+5. The Service/Repository pattern — where logic belongs when he writes his own
+6. **Tenant scoping in depth** — `TenantScope`, actor scopes, the central-context trap
+7. Validation — Form Requests via the 422 payload (`MeasurementFormRequest` is a real example)
+8. Testing — read an existing Feature test, then write one. **Moved earlier**: a real suite
+   exists, and it is the mission's final success criterion.
+9. First real pull request — Pint + PHPStan + tests green before opening
+
+**Blade out of scope.** Filament exists but is not the mission — mention only as a central
+context where the tenant scope is OFF.
+
+### The strongest teaching move available
+Ahmed consumed these exact endpoints from the SPA for years. "You have seen this JSON — here is
+the file that produced it" works repeatedly and should be reused.
 
 ## Session log
 
@@ -59,3 +70,9 @@ schedule: taught L1, re-tested cold in L2, test again around L4.
   + Reference 02 (endpoint anatomy) shipped. New asset: `trace.css`. Lesson 2 opened with cold
   retrieval of the L1 lifecycle — first spaced-repetition beat. All Laravel claims verified
   against 13.x docs before writing. Task set: predict-the-backend from a known SPA response.
+- **2026-10-11** — **Repo access granted.** Full recon of Ethaaf (LR-0004). Discovered the
+  version error (10.50.2, not 13) and corrected it openly in Lesson 3. Lesson 3 (first real
+  trace, through the live association-students endpoint) + Reference 03 (Ethaaf field guide)
+  shipped. Tenancy hazard taught from the team's own `CLAUDE.md`: **TenantScope is a no-op in
+  central context.** Task set: run `route:list`, trace an endpoint he personally built a screen
+  against, read `CLAUDE.md`.

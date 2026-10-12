@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 3 · Your First Real Trace</title>
+<link rel="stylesheet" href="../assets/course.css">
+<link rel="stylesheet" href="../assets/quiz.css">
+<link rel="stylesheet" href="../assets/trace.css">
+</head>
+<body>
+
+<header class="masthead">
+  <p class="eyebrow">Lesson 03 · Ethaaf</p>
+  <h1>Your First Real Trace</h1>
+  <p class="standfirst">No more invented examples. Today we open <strong>Ethaaf</strong> — the
+  actual codebase you are about to take backend tickets in — and trace one live endpoint from
+  URL to JSON.</p>
+  <p class="meta">Laravel 10.50.2 · ~30 minutes · Prerequisite: <a href="0002-reading-an-api-controller.html">Lesson 2</a></p>
+</header>
+
+<div class="callout hazard">
+  <span class="label">Correction: the version I taught you was wrong</span>
+  <p>Lessons 1 and 2 were pitched at Laravel 13, because we had no codebase to check.
+  <strong>Ethaaf runs Laravel 10.50.2.</strong> Everything you learned still holds — the
+  lifecycle, the four files, route model binding and API Resources are unchanged across those
+  versions — but <strong>from now on read the 10.x docs</strong>, not 13.x. Change the version
+  in the URL: <code>laravel.com/docs/<strong>10.x</strong>/…</code>. Reading the wrong version's
+  docs is one of the most common ways to waste an afternoon.</p>
+</div>
+
+<h2><span class="num">1</span>What the recon told us</h2>
+
+<p>Every question outstanding since Lesson 1 is now answered. This is your codebase's identity
+card — worth knowing cold:</p>
+
+<table>
+  <thead>
+    <tr><th style="width:30%">Question</th><th style="width:34%">Answer</th><th>Why it matters to you</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Laravel version</td>
+      <td><strong>10.50.2</strong></td>
+      <td>Read 10.x docs. PHP 8.3 locally — fine, 10 supports 8.1–8.3</td>
+    </tr>
+    <tr>
+      <td>Multi-tenancy</td>
+      <td><code>stancl/tenancy</code> 3.8, <strong>single-database</strong></td>
+      <td>One shared DB, separated by a <code>tenant_id</code> <em>column</em></td>
+    </tr>
+    <tr>
+      <td>Frontend</td>
+      <td>API-only + a Filament admin panel</td>
+      <td>Your SPA work was against <code>routes/api/v1/…</code></td>
+    </tr>
+    <tr>
+      <td>Tests</td>
+      <td><strong>Yes</strong> — Unit, Feature, Architecture</td>
+      <td>You can prove a change works before opening a PR</td>
+    </tr>
+    <tr>
+      <td>Structure</td>
+      <td><code>nwidart/laravel-modules</code></td>
+      <td>Code lives in <em>both</em> <code>app/</code> and <code>Modules/</code></td>
+    </tr>
+    <tr>
+      <td>Auth</td>
+      <td>Sanctum + <code>spatie/laravel-permission</code></td>
+      <td>Routes are guarded by permission, not just login</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout bridge">
+  <span class="label">Read this file first, before anything else</span>
+  <p>Ethaaf has a <code>CLAUDE.md</code> at its root — a written architecture guide by the people
+  who built it. It documents the tenancy model, the module layout and the service/repository
+  pattern. <strong>It is the single highest-value document available to you</strong>, worth more
+  than any tutorial, because it describes <em>this</em> code. Read it end to end this week.</p>
+</div>
+
+<h2><span class="num">2</span>The hazard, stated plainly</h2>
+
+<p>LR-0002 predicted tenant isolation would be your main danger. Now we know the mechanism, and
+it is sharper than expected. From Ethaaf's own <code>CLAUDE.md</code>:</p>
+
+<div class="callout hazard">
+  <span class="label">The single most important sentence in the codebase</span>
+  <p><strong><code>TenantScope</code> is a NO-OP when <code>tenancy()-&gt;initialized</code> is
+  false.</strong> In central context — the Filament panel, a plain queue job, a console command
+  — a query like <code>Teacher::query()</code> returns <strong>every tenant's rows</strong>.</p>
+</div>
+
+<p>Unpack what that means. There is <em>one</em> database. A mosque's students are not in a
+separate database; they are rows in a shared <code>students</code> table with a
+<code>tenant_id</code> column. A global scope silently appends
+<code>WHERE tenant_id = …</code> to your queries — <strong>but only when a tenant context is
+active.</strong> Outside that context, the same code returns everyone's data and raises no
+error.</p>
+
+<p>Three rules follow. Treat them as non-negotiable until you understand the machinery:</p>
+
+<div class="trace">
+  <div class="trace-step">
+    <span class="trace-label">Never call bare withoutGlobalScopes()</span>
+    <p>It strips <code>TenantScope</code> along with the actor scopes and silently returns every
+    tenant's rows. If you must drop a scope, drop it <strong>by class name</strong> — the way
+    <code>NotificationService</code> does.</p>
+  </div>
+  <div class="trace-step">
+    <span class="trace-label">Bulk insert() bypasses the tenant stamp</span>
+    <p><code>tenant_id</code> is filled by a <code>creating</code> model hook.
+    <code>insert()</code> skips Eloquent events entirely, so you must supply
+    <code>tenant_id</code> by hand or write rows belonging to nobody.</p>
+  </div>
+  <div class="trace-step">
+    <span class="trace-label">Ask "what context am I in?" before every query</span>
+    <p>Inside an API request on a tenant route, the scope is live and you are safe. Inside a
+    queue job, a command, or Filament, it may not be. <code>$tenant-&gt;run(...)</code> is what
+    gives the scope a tenant to filter by — it is not a database switch.</p>
+  </div>
+</div>
+
+<p>You do not need to understand <em>how</em> the scope is installed yet. You need to be able to
+ask the question. A leak here is a data breach between mosques, not a bug report.</p>
+
+<h2><span class="num">3</span>Your real endpoint, traced</h2>
+
+<p>Here is a live, production endpoint: the association's student roster. Open these four files
+in your editor and follow along — this is the reading order from Lesson 2, applied for real.</p>
+
+<h3>① The route</h3>
+
+<p class="filename">routes/api/v1/association/students.php</p>
+<pre><code>Route::middleware('associationPermission:'.Permission::VIEW_STUDENTS)-&gt;group(function () {
+    Route::get('/', [StudentController::class, 'index'])-&gt;name('index');
+});</code></pre>
+
+<p>Mounted from <code>protected.php</code> with
+<code>Route::prefix('students')-&gt;name('students.')</code>, which itself sits under
+<code>/api/v1/association</code> behind <code>auth:sanctum</code>. So the real URL is:</p>
+
+<pre><code>GET /api/v1/tenant/association/students</code></pre>
+
+<div class="callout note">
+  <span class="label">This is why Lesson 2 insisted on <code>route:list</code></span>
+  <p>That URL appears nowhere in a single file. It is assembled from three nested prefixes
+  across two files. You will never find it by searching for the path string — you find it with
+  <code>php artisan route:list --path=association/students</code>.</p>
+</div>
+
+<p>Note the middleware: not just <code>auth:sanctum</code>, but
+<code>associationPermission:VIEW_STUDENTS</code>. Being logged in is not enough; the caller must
+hold a specific permission. That is <code>spatie/laravel-permission</code> doing the work, and it
+is <strong>the authorization layer you will be expected to respect on every new endpoint</strong>.</p>
+
+<h3>② The controller</h3>
+
+<p class="filename">app/Http/Controllers/Api/V1/Association/StudentController.php</p>
+<pre><code>class StudentController extends Controller
+{
+    use ResolvesAssociation;
+
+    public function __construct(protected StudentService $service) {}
+
+    public function index(Request $request): JsonResponse
+    {
+        $students = $this-&gt;service-&gt;list($this-&gt;associationId($request));
+
+        return $this-&gt;returnData(
+            resourceResponse(AssociationStudentResource::collection($students)),
+            __('association.students'),
+        );
+    }
+}</code></pre>
+
+<p>Compare this to the textbook controller from Lesson 2. The shape is identical — thin, delegating
+— but three things are new and all three are Ethaaf conventions you must copy:</p>
+
+<div class="trace">
+  <div class="trace-step">
+    <span class="trace-label">__construct(protected StudentService $service)</span>
+    <p><strong>Constructor dependency injection.</strong> You never write
+    <code>new StudentService()</code>. You declare what you need in the constructor and Laravel's
+    service container builds it for you. The business logic lives in the
+    <strong>Service</strong>, the database queries in the <strong>Repository</strong>, and the
+    controller only wires HTTP to them. This is the service/repository pattern from
+    <code>CLAUDE.md</code>, and it is the house style.</p>
+  </div>
+  <div class="trace-step">
+    <span class="trace-label">AssociationStudentResource::collection($students)</span>
+    <p>Exactly the Resource layer from Lesson 2 — <code>::collection()</code> because this is a
+    list, not one record. Your Lesson 2 knowledge transfers with zero adjustment.</p>
+  </div>
+  <div class="trace-step">
+    <span class="trace-label">$this-&gt;returnData(…, __('association.students'))</span>
+    <p>A <strong>project-specific response envelope</strong>, not Laravel. Ethaaf wraps every API
+    response in a consistent structure with a translated message — <code>__()</code> is
+    Laravel's translation helper, and this app is Arabic-facing. Copy this pattern; never return
+    a bare Resource from a new endpoint, or your response shape will not match the rest of
+    the API.</p>
+  </div>
+</div>
+
+<h3>③ The service — where the tenancy nuance lives</h3>
+
+<p class="filename">app/Services/Association/StudentService.php</p>
+<pre><code>public function list(int $associationId): LengthAwarePaginator|Collection
+{
+    $repo = $this-&gt;repo
+        -&gt;forTenants($this-&gt;aggregator-&gt;tenantIds($associationId))
+        -&gt;withRelations($this-&gt;repo-&gt;listRelations());
+    // …
+}</code></pre>
+
+<p>Read the docblock the team wrote above that method — it is the most instructive comment in the
+file:</p>
+
+<div class="callout hazard">
+  <span class="label">From the code's own documentation</span>
+  <p><em>"The association's مجمعات are resolved here and handed to the repository explicitly.
+  Student carries Stancl's vendor tenant scope, which is dropped by the repository, so nothing
+  else would constrain the query."</em></p>
+</div>
+
+<p>This is section 2's hazard, live in production code. The automatic tenant scope is
+<em>deliberately dropped</em> here, because an association legitimately spans several مجمعات and
+the vendor scope cannot express that. The isolation is then re-established <strong>by hand</strong>
+— <code>forTenants(...)</code> with an explicitly resolved tenant set.</p>
+
+<p>That is the pattern to internalise: when the automatic guard is removed, something explicit
+<em>must</em> replace it. If you ever see a scope dropped with nothing taking its place, you have
+found a data leak — and that is a genuinely valuable thing to spot in review.</p>
+
+<h3>④ The resource</h3>
+
+<p class="filename">app/Http/Resources/Association/AssociationStudentResource.php</p>
+<pre><code>return [
+    'id'           =&gt; $this-&gt;id,
+    'student_name' =&gt; $this-&gt;contact?-&gt;name,
+    'national_id'  =&gt; $this-&gt;national_id,
+    'tenant_id'    =&gt; $this-&gt;tenant_id,
+    'tenant_name'  =&gt; $this-&gt;tenant?-&gt;name,
+    'mosque'       =&gt; $this-&gt;mosque?-&gt;name,
+    'sections'     =&gt; $sections = $this-&gt;sectionsWithoutTerm-&gt;pluck('name')-&gt;unique()-&gt;values()-&gt;all(),
+    // …
+];</code></pre>
+
+<p>This is the JSON your SPA received. If you built a table against this endpoint, you have read
+this output many times — now you are looking at the file that produced it.</p>
+
+<p>One piece of PHP worth naming, because it is everywhere in this codebase:
+<code>?-&gt;</code> is the <strong>nullsafe operator</strong>. <code>$this-&gt;contact?-&gt;name</code>
+means "if <code>contact</code> is null, evaluate to null instead of crashing." It is exactly
+JavaScript's <code>?.</code> — you already know this one.</p>
+
+<h2><span class="num">4</span>The full trace</h2>
+
+<pre><code>SPA:  GET /api/v1/tenant/association/students?per_page=20
+        ↓
+routes/api/v1/association/protected.php     prefix + auth:sanctum
+        ↓
+routes/api/v1/association/students.php      associationPermission:VIEW_STUDENTS
+        ↓                                        ← no permission = 403
+StudentController@index                     resolves association id
+        ↓
+StudentService::list()                      resolves the tenant SET explicitly
+        ↓
+AssociationStudentRepository                drops vendor scope, applies forTenants()
+        ↓                                        ← THE isolation boundary
+AssociationStudentResource::collection()    picks the columns
+        ↓
+returnData(...)                             Ethaaf's response envelope
+        ↓
+JSON → your table renders</code></pre>
+
+<p>Six layers rather than four. The extra two — <strong>Service</strong> and
+<strong>Repository</strong> — are Ethaaf's architecture, not Laravel's. Your reading order
+becomes: <strong>route → controller → service → repository → resource</strong>.</p>
+
+<h2><span class="num">5</span>Retrieval practice</h2>
+
+<div class="quiz"
+     data-answer="b"
+     data-why="Single-database tenancy: one database, with rows separated by a tenant_id column and a global scope that filters on it."
+     data-hintA="That is multi-database tenancy. Stancl supports it, but Ethaaf has DatabaseTenancyBootstrapper commented out."
+     data-hintC="There is no separate server per mosque. The split is logical, not physical."
+     data-hintD="Table prefixes are not used here. Look again at how rows are separated.">
+  <p class="q">In Ethaaf, how is one mosque's student data kept separate from another's?</p>
+  <div class="opts">
+    <button class="opt" data-opt="a">Each tenant has its own separate database</button>
+    <button class="opt" data-opt="b">One database, rows with a tenant_id column</button>
+    <button class="opt" data-opt="c">Each tenant runs on its own separate server</button>
+    <button class="opt" data-opt="d">One database, each tenant has prefixed tables</button>
+  </div>
+  <div class="feedback"></div>
+</div>
+
+<div class="quiz"
+     data-answer="d"
+     data-why="It strips TenantScope along with the actor scopes, and the query silently returns every tenant's rows. Always remove scopes by class name instead."
+     data-hintA="It does not error. That is precisely the danger — it fails silently."
+     data-hintB="The opposite happens: you get more rows than you should, not fewer."
+     data-hintC="Nothing is blocked. The query runs happily and returns too much.">
+  <p class="q">You call bare <code>withoutGlobalScopes()</code> on a tenant model in Ethaaf. What happens?</p>
+  <div class="opts">
+    <button class="opt" data-opt="a">It throws an exception about missing tenant</button>
+    <button class="opt" data-opt="b">It returns only the current tenant's own rows</button>
+    <button class="opt" data-opt="c">It blocks the query and returns an empty set</button>
+    <button class="opt" data-opt="d">It returns every tenant's rows, with no error</button>
+  </div>
+  <div class="feedback"></div>
+</div>
+
+<div class="quiz"
+     data-answer="c"
+     data-why="Business logic lives in the Service, queries in the Repository, and the controller only wires HTTP to them. That is the documented house style."
+     data-hintA="Ethaaf controllers are deliberately thin — the query belongs further down."
+     data-hintB="The Resource shapes JSON for output; it is not where you fetch or filter data."
+     data-hintD="Routes declare URLs, middleware and permissions, never query logic.">
+  <p class="q">You are adding a filtered student query to Ethaaf. Where does that logic belong?</p>
+  <div class="opts">
+    <button class="opt" data-opt="a">Inside the controller method handling it</button>
+    <button class="opt" data-opt="b">Inside the Resource class that shapes it</button>
+    <button class="opt" data-opt="c">Inside the Service and Repository layers</button>
+    <button class="opt" data-opt="d">Inside the route file that declares it</button>
+  </div>
+  <div class="feedback"></div>
+</div>
+
+<div class="recall">
+  <p class="q">From memory: why is a query in a queue job more dangerous in Ethaaf than the same query inside an API request?</p>
+  <textarea placeholder="Think about what has to be true for the tenant scope to do anything."></textarea>
+  <button class="reveal-btn">Check my answer</button>
+  <div class="recall-answer">
+    <p>Because <strong><code>TenantScope</code> is a no-op when tenancy is not initialized.</strong>
+    An API request on a tenant route initializes tenancy, so the scope appends
+    <code>WHERE tenant_id = …</code> and you are protected automatically. A plain queue job, a
+    console command or the Filament panel runs in <em>central context</em> — the same
+    <code>Student::query()</code> returns every mosque's rows, silently and without error.</p>
+    <p><code>$tenant-&gt;run(...)</code> is what supplies the tenant the scope needs. It is not a
+    database switch — there is only one database.</p>
+  </div>
+</div>
+
+<h2><span class="num">6</span>Your task before Lesson 4</h2>
+
+<p>You have the repo now, so this is hands-on. Roughly thirty minutes:</p>
+
+<p><strong>One — prove the route exists.</strong> In the Ethaaf folder, run:</p>
+
+<pre><code>php artisan route:list --path=association/students
+php artisan route:list --path=association --except-vendor</code></pre>
+
+<p>Find the roster endpoint in that output and confirm the URL matches section 3. Then pick
+<em>any</em> endpoint you personally built a screen against and run
+<code>route:list</code> for it.</p>
+
+<p><strong>Two — trace it yourself, unaided.</strong> For that endpoint of your choosing, open
+the four-to-six files and write down the chain: route → controller → service → repository →
+resource. <strong>Bring me the trace.</strong> Where you get stuck is precisely what Lesson 4
+should cover — a stall is data, not failure.</p>
+
+<p><strong>Three — read <code>CLAUDE.md</code> end to end.</strong> It is 122 lines. You now have
+the context to understand most of it, and it will pay for itself many times over.</p>
+
+<div class="callout note">
+  <span class="label">One thing to raise with your team</span>
+  <p>Laravel 10's security support ended <strong>4 February 2025</strong>
+  (<a href="https://laravel.com/docs/10.x/releases#support-policy">support policy</a>). Ethaaf
+  is past EOL. That is not yours to fix and not a blocker for learning — but knowing it, and
+  asking your lead whether an upgrade is planned, is exactly the kind of question that reads as
+  senior. It also tells you whether to keep reading 10.x docs for long.</p>
+</div>
+
+<div class="source">
+  <span class="label">Primary source — read this next</span>
+  <p><strong><code>C:\laragon\www\ethaaf\CLAUDE.md</code></strong>. Your codebase's own
+  architecture guide beats any external tutorial, because it describes the code you will
+  actually change. Read the Multi-Tenancy section twice.</p>
+  <p>Then: <a href="https://laravel.com/docs/10.x/eloquent#query-scopes">Eloquent — Query
+  Scopes (10.x)</a>, the mechanism behind <code>TenantScope</code> ·
+  <a href="https://tenancyforlaravel.com/docs/v3/single-database-tenancy/">Stancl — Single-database
+  tenancy</a> · full list in <a href="../RESOURCES.md">RESOURCES.md</a>.</p>
+</div>
+
+<div class="ask-teacher">
+  <span class="label">Ask your teacher</span>
+  <p>You have the codebase open now, so the best questions are specific. Try: <em>"Open
+  <code>AssociationStudentRepository</code> and explain <code>forTenants</code> to me."</em> ·
+  <em>"What is the service container actually doing in that constructor?"</em> ·
+  <em>"Show me an existing Feature test and explain how it fakes a tenant."</em> ·
+  <em>"I traced endpoint X and got lost at step 3 — here is what I have."</em> ·
+  <em>"What would a safe new endpoint look like in this codebase?"</em></p>
+  <p>I can read any file in Ethaaf and walk you through it. That is now the fastest way for you
+  to learn — and when you get your first ticket, bring it here and we will plan it together.</p>
+</div>
+
+<div class="footer">
+  <p class="meta">
+    <strong>Lesson 3 of an ongoing course</strong> · Next: Eloquent in Ethaaf — relationships,
+    eager loading and the N+1 trap, read from real repository code.<br>
+    Workspace: <a href="../MISSION.md">MISSION.md</a> ·
+    <a href="../RESOURCES.md">RESOURCES.md</a> ·
+    <a href="0002-reading-an-api-controller.html">← Lesson 2</a> ·
+    <a href="../reference/0002-api-endpoint-anatomy.html">Endpoint anatomy</a> ·
+    <a href="../reference/0003-ethaaf-field-guide.html">Ethaaf field guide →</a>
+  </p>
+</div>
+
+<script src="../assets/quiz.js"></script>
+</body>
+</html>
