@@ -22,32 +22,40 @@
 
 ## Open questions blocking precision
 
-Asked at the end of Lesson 1. Until answered, teaching stays version-general:
+Asked at the end of Lesson 1. **Question 3 answered 2026-09-23: API-only, separate SPA**
+(see LR-0003) — this was the one that reshaped the path. Still outstanding:
 
 1. Laravel version of the work codebase (`php artisan --version`)
 2. Multi-tenancy approach — `stancl/tenancy`, `spatie/laravel-multitenancy`, or hand-rolled
-3. Frontend layer — Blade, Inertia + Vue, or a separate SPA
+3. ~~Frontend layer~~ — **answered: Laravel serves JSON, frontend is a separate SPA**
 4. Does it have a test suite?
 
-Answer 3 in particular reshapes the whole path.
+Ahmed has **no repo access** as of 2026-09-23, so lessons must stay runnable without it.
+Predict-then-verify tasks work well here and are being used deliberately.
 
-## Curriculum sketch (provisional — revise once the codebase is known)
+## Curriculum sketch (revised 2026-09-23 after LR-0003 — API-only)
 
 1. ✅ Request lifecycle — the spine everything hangs off
-2. Reading a controller; tracing one real feature end-to-end
-3. Eloquent basics — models, retrieval, relationships (halaqa → students → progress)
-4. Migrations — adding a column to an existing feature safely
-5. Validation — Form Requests, why server-side is the real gate
+2. ✅ Reading an API endpoint — the four files: route → controller → model → resource
+3. Eloquent — retrieval, relationships (halaqa → students → progress), and the **N+1 trap**
+   (explicitly teased at the end of Lesson 2 — he may ask about it first)
+4. Validation — Form Requests, taught through the **422 JSON payload** the SPA receives
+5. Migrations — adding a column, then surfacing it through the Resource (ties back to L2)
 6. Tenant scoping — global scopes, and how the codebase actually enforces isolation
-7. Blade or Inertia+Vue, whichever the codebase uses
-8. Testing — writing the test that lets him open a PR with confidence
-9. First real pull request
+7. Testing — an endpoint test that lets him open a PR with confidence
+8. First real pull request
 
-Interleave PHP syntax as needed rather than front-loading it. Spaced retrieval of the lifecycle
-across lessons 2–4 — it was taught once, it needs re-testing cold.
+**Blade is out of scope** — API-only codebase. Mention only for recognition.
+Interleave PHP syntax as needed rather than front-loading it. The lifecycle is now on a spaced
+schedule: taught L1, re-tested cold in L2, test again around L4.
 
 ## Session log
 
 - **2026-08-09** — Workspace created. Mission established (promotion via existing multi-tenant
   halaqa codebase). LR-0001, LR-0002 written. Assets: `course.css`, `quiz.css`, `quiz.js`.
   Lesson 1 + Reference 01 shipped. Awaiting codebase recon answers.
+- **2026-09-23** — Codebase confirmed **API-only, separate SPA** (LR-0003); no repo access yet.
+  Curriculum revised: Blade dropped, API Resources promoted. Lesson 2 (reading an API endpoint)
+  + Reference 02 (endpoint anatomy) shipped. New asset: `trace.css`. Lesson 2 opened with cold
+  retrieval of the L1 lifecycle — first spaced-repetition beat. All Laravel claims verified
+  against 13.x docs before writing. Task set: predict-the-backend from a known SPA response.

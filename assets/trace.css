@@ -1,0 +1,84 @@
+/* trace.css — the "annotated trace" component.
+ *
+ * A vertical, numbered walk through something that happens in sequence: the parts of
+ * a method signature, the hops of a request, the steps of a migration. Each step pairs
+ * a literal fragment of code (.trace-label) with the explanation of what it does.
+ *
+ * Used wherever a lesson needs to say "read this line left to right, here is each part".
+ * Purely presentational — no JS, prints cleanly, works in light and dark.
+ *
+ *   <div class="trace">
+ *     <div class="trace-step">
+ *       <span class="trace-label">Halaqa $halaqa</span>
+ *       <p>Explanation of that fragment…</p>
+ *     </div>
+ *   </div>
+ */
+
+.trace {
+  counter-reset: tracestep;
+  border-left: 2px solid var(--rule);
+  padding-left: 0;
+  margin: 0 0 1.4rem;
+}
+
+.trace-step {
+  position: relative;
+  padding: 0 0 1.1rem 1.5rem;
+}
+.trace-step:last-child { padding-bottom: 0; }
+
+/* The numbered marker sitting on the rule. */
+.trace-step::before {
+  counter-increment: tracestep;
+  content: counter(tracestep);
+  position: absolute;
+  left: -0.72rem;
+  top: 0.08rem;
+  width: 1.35rem;
+  height: 1.35rem;
+  border-radius: 50%;
+  background: var(--paper);
+  border: 2px solid var(--accent);
+  color: var(--accent);
+  font-family: var(--sans);
+  font-size: 0.66rem;
+  font-weight: 700;
+  line-height: 1.1rem;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The literal code fragment being annotated. */
+.trace-label {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  color: var(--ink);
+  background: var(--code-bg);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  padding: 0.16em 0.45em;
+  margin-bottom: 0.45rem;
+}
+
+.trace-step p {
+  font-size: 0.93rem;
+  line-height: 1.55;
+  margin: 0;
+}
+.trace-step p + p { margin-top: 0.5rem; }
+
+/* ── A clarifying aside inside a quiz's option block ──── */
+
+.opts-note {
+  font-family: var(--sans);
+  font-size: 0.76rem;
+  line-height: 1.45;
+  color: var(--ink-faint);
+  margin-bottom: 0.15rem;
+}
+
+@media print {
+  .trace-step::before { background: #fff; }
+}

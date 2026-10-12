@@ -11,6 +11,19 @@
 - [Eloquent: Getting Started](https://laravel.com/docs/13.x/eloquent)
   Model conventions, retrieval, mass assignment, soft deletes, and query scopes.
   Use for: the ORM, and specifically **global scopes** — the mechanism behind tenant isolation.
+- [Controllers — Resource Controllers](https://laravel.com/docs/13.x/controllers#resource-controllers)
+  The CRUD action table, `Route::resource` vs `Route::apiResource`, and controller DI.
+  Use for: **the API surface of the work codebase.** Verified 2026-09-23.
+- [Eloquent: API Resources](https://laravel.com/docs/13.x/eloquent-resources)
+  The transformation layer between Eloquent models and JSON. `toArray`, collections, `data`
+  wrapping. Use for: **the JSON contract the SPA consumes** — highest-value file type for
+  Ahmed's likely first tickets. Verified 2026-09-23.
+- [Routing — Route Model Binding](https://laravel.com/docs/13.x/routing#route-model-binding)
+  How a type-hinted model parameter is resolved from a URI segment, and the automatic 404.
+  Use for: explaining why controller methods receive loaded models. Verified 2026-09-23.
+- [Laravel Sanctum](https://laravel.com/docs/13.x/sanctum)
+  Token and SPA authentication. The `auth:sanctum` middleware guarding API routes.
+  Use for: when auth comes up — relevant because the codebase is API-only (LR-0003).
 - [Laracasts: Laravel From Scratch (2026 Edition)](https://laracasts.com/series/laravel-from-scratch-2026)
   The longest-running Laravel intro series, refreshed for Laravel 12+. Video, paid subscription.
   Use for: the guided build-along path when reading docs alone feels too dry.
@@ -44,8 +57,10 @@
 
 ## Gaps
 
-- **The work codebase itself is the biggest unknown.** Laravel version, multi-tenancy approach
-  (package vs. hand-rolled), frontend layer (Blade / Inertia+Vue / separate SPA), and test setup
-  are all unconfirmed. Resolving this changes the teaching path significantly — see LR-0002.
+- **Frontend layer resolved 2026-09-23: API-only, separate SPA** (LR-0003). Blade and Inertia
+  resources are therefore not needed. Still unconfirmed: **Laravel version**, **multi-tenancy
+  approach** (package vs. hand-rolled), and **test setup**. Ahmed has no repo access yet.
+- **No SPA-side resource listed yet.** The frontend repo is separate; if its framework matters
+  later (it is his home turf), note it here.
 - No Arabic-language Laravel resources vetted yet; may matter for domain vocabulary
   (halaqa, tilawah, sanad, juz) if the codebase names things in transliterated Arabic.

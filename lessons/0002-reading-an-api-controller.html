@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 2 · Reading the Endpoint You Used to Call</title>
+<link rel="stylesheet" href="../assets/course.css">
+<link rel="stylesheet" href="../assets/quiz.css">
+<link rel="stylesheet" href="../assets/trace.css">
+</head>
+<body>
+
+<header class="masthead">
+  <p class="eyebrow">Lesson 02 · Laravel Foundations</p>
+  <h1>Reading the Endpoint You Used to Call</h1>
+  <p class="standfirst">Your codebase is a JSON API. Today you learn to read one endpoint
+  from URL to response — and to name the four files any endpoint lives in.</p>
+  <p class="meta">Laravel 13.x · ~25 minutes · Prerequisite: <a href="0001-the-request-lifecycle.html">Lesson 1</a></p>
+</header>
+
+<div class="callout bridge">
+  <span class="label">What changed since Lesson 1</span>
+  <p>You confirmed your work codebase is <strong>API-only</strong>: Laravel returns JSON, and the
+  frontend is a separate SPA. That is good news. There is no Blade templating layer to learn, and
+  the boundary you already work against every day — <em>the JSON contract</em> — is now the thing
+  you will be editing from the inside. Everything you know about consuming an API becomes
+  knowledge about <em>building</em> one.</p>
+</div>
+
+<h2><span class="num">1</span>Cold recall first</h2>
+
+<p>Before any new material. This was Lesson 1, and the gap since then is exactly what makes
+retrieving it valuable — struggling to recall is the mechanism, not a sign of failure.</p>
+
+<div class="recall">
+  <p class="q">A request hits your Laravel API. Name the stages it passes through, in order. Then: which stage rejects a request carrying an expired token?</p>
+  <textarea placeholder="Stages in order, then your answer on the token question."></textarea>
+  <button class="reveal-btn">Check my answer</button>
+  <div class="recall-answer">
+    <p><strong>Stages:</strong> browser → <code>public/index.php</code> → bootstrap → router →
+    middleware → controller (↔ model ↔ database) → response.</p>
+    <p><strong>Expired token:</strong> <strong>middleware</strong> — before your controller runs
+    at all. This is why an endpoint's controller can assume a valid user exists: something
+    upstream already guaranteed it. In an API codebase that middleware is usually
+    <code>auth:sanctum</code> rather than <code>auth</code>.</p>
+  </div>
+</div>
+
+<h2><span class="num">2</span>The four files behind one endpoint</h2>
+
+<p>When your SPA calls <code>GET /api/halaqas/42</code>, four files on the server cooperate to
+answer it. Learning to find these four <em>is</em> the skill of reading a Laravel API:</p>
+
+<table>
+  <thead>
+    <tr><th style="width:34%">File</th><th style="width:22%">Its job</th><th>What you ask it</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>routes/api.php</code></td>
+      <td>The switchboard</td>
+      <td>Which controller handles this URL?</td>
+    </tr>
+    <tr>
+      <td><code>app/Http/Controllers/</code></td>
+      <td>The handler</td>
+      <td>What actually happens on this request?</td>
+    </tr>
+    <tr>
+      <td><code>app/Models/</code></td>
+      <td>The data access</td>
+      <td>What is a Halaqa, and what relates to it?</td>
+    </tr>
+    <tr>
+      <td><code>app/Http/Resources/</code></td>
+      <td>The JSON shape</td>
+      <td>Which fields actually reach the frontend?</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout note">
+  <span class="label">The one to notice</span>
+  <p>That fourth file is the one that will surprise you, and it is the most useful to your daily
+  work. When the SPA team says <em>"the API isn't returning <code>teacher_name</code>"</em>, the
+  answer is almost never in the controller. It is in the <strong>Resource</strong> — the
+  translation layer deciding which model fields become JSON. Knowing that one fact makes you
+  immediately useful on backend tickets.</p>
+</div>
+
+<h2><span class="num">3</span>Tracing one endpoint, file by file</h2>
+
+<p>Here is a realistic halaqa endpoint. Read the files in order — this is exactly the sequence
+you will follow in a real codebase.</p>
+
+<h3>① The route — where you always start</h3>
+
+<p class="filename">routes/api.php</p>
+<pre><code>Route::middleware(['auth:sanctum', 'tenant'])-&gt;group(function () {
+    Route::apiResource('halaqas', HalaqaController::class);
+});</code></pre>
+
+<p>Two lines, a lot of meaning. <code>apiResource</code> is a shorthand that registers
+<strong>five</strong> routes at once — the CRUD set, minus the two that would only serve HTML
+forms (<a href="https://laravel.com/docs/13.x/controllers#api-resource-routes">docs</a>):</p>
+
+<table>
+  <thead>
+    <tr><th style="width:18%">Verb</th><th style="width:36%">URI</th><th>Controller method</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>GET</td><td><code>/api/halaqas</code></td><td><code>index</code> — list them</td></tr>
+    <tr><td>POST</td><td><code>/api/halaqas</code></td><td><code>store</code> — create one</td></tr>
+    <tr><td>GET</td><td><code>/api/halaqas/{halaqa}</code></td><td><code>show</code> — fetch one</td></tr>
+    <tr><td>PUT/PATCH</td><td><code>/api/halaqas/{halaqa}</code></td><td><code>update</code> — change one</td></tr>
+    <tr><td>DELETE</td><td><code>/api/halaqas/{halaqa}</code></td><td><code>destroy</code> — remove one</td></tr>
+  </tbody>
+</table>
+
+<div class="callout bridge">
+  <span class="label">Why this matters when reading unfamiliar code</span>
+  <p>You will search the codebase for <code>halaqas/42</code> and find nothing, because
+  <em>that URL is never written down anywhere</em>. It is generated by that one
+  <code>apiResource</code> line. This is the most common way newcomers get lost in a Laravel
+  repo. The fix is a command: <code>php artisan route:list --path=halaqa</code> prints every
+  real route, fully expanded — the authoritative answer to "what endpoints exist?"</p>
+</div>
+
+<h3>② The controller — the handler itself</h3>
+
+<p class="filename">app/Http/Controllers/HalaqaController.php</p>
+<pre><code>&lt;?php
+
+namespace App\Http\Controllers;
+
+use App\Http\Resources\HalaqaResource;
+use App\Models\Halaqa;
+
+class HalaqaController extends Controller
+{
+    public function show(Halaqa $halaqa)
+    {
+        return new HalaqaResource($halaqa);
+    }
+}</code></pre>
+
+<p>That is a complete, production-shaped endpoint. Read the signature closely — it contains the
+most magical line in Laravel:</p>
+
+<div class="trace">
+  <div class="trace-step">
+    <span class="trace-label">public function show(</span>
+    <p>The method name matches the table above: <code>show</code> handles
+    <code>GET /api/halaqas/{halaqa}</code>. Wired by convention, not configuration.</p>
+  </div>
+  <div class="trace-step">
+    <span class="trace-label">Halaqa $halaqa</span>
+    <p><strong>Route model binding.</strong> Because the parameter is type-hinted as the
+    <code>Halaqa</code> model <em>and</em> the variable name <code>$halaqa</code> matches the
+    <code>{halaqa}</code> URI segment, Laravel runs the database lookup for you. By the time your
+    code executes, <code>$halaqa</code> is a loaded model. <strong>If no row matches, Laravel
+    returns 404 automatically</strong> and your method never runs
+    (<a href="https://laravel.com/docs/13.x/routing#implicit-binding">docs</a>).</p>
+  </div>
+  <div class="trace-step">
+    <span class="trace-label">return new HalaqaResource($halaqa)</span>
+    <p>Hand the model to the Resource, which decides the JSON shape. No <code>json_encode</code>,
+    no status code, no headers — returning a Resource is enough.</p>
+  </div>
+</div>
+
+<div class="callout hazard">
+  <span class="label">The habit that will save you</span>
+  <p>Notice what is <em>absent</em>: no null check, no "is this user allowed" check, no tenant
+  check. A thin controller is idiomatic Laravel — those checks live in middleware and in model
+  binding. But it means <strong>you cannot judge an endpoint's security by reading its
+  controller alone</strong>. You must read the route's middleware too. When you review backend
+  code, always read the route first.</p>
+</div>
+
+<h3>③ The model — what a Halaqa is</h3>
+
+<p class="filename">app/Models/Halaqa.php</p>
+<pre><code>class Halaqa extends Model
+{
+    protected $fillable = ['name', 'teacher_id', 'schedule'];
+
+    public function students()
+    {
+        return $this-&gt;hasMany(Student::class);
+    }
+
+    public function teacher()
+    {
+        return $this-&gt;belongsTo(User::class, 'teacher_id');
+    }
+}</code></pre>
+
+<p>Take two things from this file for now. <code>$fillable</code> lists which fields may be set
+from user input — a safety list. And the methods below it declare <strong>relationships</strong>:
+a halaqa <em>has many</em> students and <em>belongs to</em> a teacher. Those become
+<code>$halaqa-&gt;students</code> and <code>$halaqa-&gt;teacher</code> elsewhere in the code.
+Relationships get a full lesson of their own; today you only need to recognise them on sight.</p>
+
+<h3>④ The resource — the JSON contract</h3>
+
+<p class="filename">app/Http/Resources/HalaqaResource.php</p>
+<pre><code>class HalaqaResource extends JsonResource
+{
+    public function toArray(Request $request): array
+    {
+        return [
+            'id'            =&gt; $this-&gt;id,
+            'name'          =&gt; $this-&gt;name,
+            'teacher_name'  =&gt; $this-&gt;teacher-&gt;name,
+            'student_count' =&gt; $this-&gt;students-&gt;count(),
+        ];
+    }
+}</code></pre>
+
+<p>This is the file your SPA actually consumes. Whatever sits in that array is what the frontend
+receives — and, just as importantly, whatever is <em>not</em> in it stays on the server. The
+halaqa row might have fifteen columns; the API exposes four.</p>
+
+<p>The response your <code>fetch()</code> resolves with:</p>
+
+<pre><code>{
+  "data": {
+    "id": 42,
+    "name": "Halaqa Al-Noor",
+    "teacher_name": "Ustadh Kareem",
+    "student_count": 12
+  }
+}</code></pre>
+
+<div class="callout note">
+  <span class="label">That <code>data</code> wrapper</span>
+  <p>Laravel wraps the outermost resource in a <code>data</code> key by default — which is why
+  SPA code so often ends up reading <code>res.data.data</code>. It can be switched off globally
+  with <code>JsonResource::withoutWrapping()</code> in a service provider
+  (<a href="https://laravel.com/docs/13.x/eloquent-resources#data-wrapping">docs</a>). If your
+  codebase's responses are <em>not</em> wrapped, that call is the reason — worth searching for.</p>
+</div>
+
+<h2><span class="num">4</span>The trace, end to end</h2>
+
+<pre><code>SPA:  fetch('/api/halaqas/42')
+        ↓
+routes/api.php          apiResource → HalaqaController@show
+        ↓
+middleware              auth:sanctum ✓   tenant ✓       ← fails here = 401
+        ↓
+route model binding     SELECT * FROM halaqas WHERE id = 42   ← no row = 404
+        ↓
+HalaqaController@show   receives $halaqa, already loaded
+        ↓
+HalaqaResource          picks 4 fields out of the model
+        ↓
+JSON  { "data": { ... } }   → your await resolves</code></pre>
+
+<p>Four files, one path. Every endpoint in your work codebase follows this shape. When you are
+handed a ticket, this is your reading order: <strong>route → middleware → controller → model →
+resource</strong>.</p>
+
+<h2><span class="num">5</span>Retrieval practice</h2>
+
+<div class="quiz"
+     data-answer="c"
+     data-why="apiResource excludes create and edit, because those two exist only to serve HTML forms. An API client builds its own forms."
+     data-hintA="Those are two of the five that ARE registered — index lists, store creates."
+     data-hintB="Both of those are registered. Think about which actions exist only to return an HTML page."
+     data-hintD="Both of those are registered. The excluded pair never touch data at all.">
+  <p class="q">Which two actions does <code>Route::apiResource</code> leave out that <code>Route::resource</code> registers?</p>
+  <div class="opts">
+    <button class="opt" data-opt="a">It leaves out the index action and store action</button>
+    <button class="opt" data-opt="b">It leaves out the show action and update action</button>
+    <button class="opt" data-opt="c">It leaves out the create action and edit action</button>
+    <button class="opt" data-opt="d">It leaves out the store action and destroy action</button>
+  </div>
+  <div class="feedback"></div>
+</div>
+
+<div class="quiz"
+     data-answer="b"
+     data-why="Route model binding runs the lookup before your method. No matching row means an automatic 404, and the controller body never executes."
+     data-hintA="It never reaches your code at all, so it cannot be null inside the method — Laravel stops earlier."
+     data-hintC="Laravel does not invent an empty model. The request is terminated instead."
+     data-hintD="A 500 means an unhandled error. A missing record is expected, so the framework handles it deliberately.">
+  <p class="q">A request hits <code>GET /api/halaqas/999</code> and no halaqa with id 999 exists. What happens?</p>
+  <div class="opts">
+    <button class="opt" data-opt="a">The method runs with the variable set to null</button>
+    <button class="opt" data-opt="b">Laravel returns a 404 before the method runs</button>
+    <button class="opt" data-opt="c">The method runs with a new empty model object</button>
+    <button class="opt" data-opt="d">Laravel throws a 500 server error to the client</button>
+  </div>
+  <div class="feedback"></div>
+</div>
+
+<div class="quiz"
+     data-answer="a"
+     data-why="The Resource class decides which model fields become JSON. Adding a database column does nothing to the API until it is listed in toArray."
+     data-hintB="The controller hands the whole model to the Resource — it does not pick the fields itself."
+     data-hintC="The model defines what data exists and how it relates, not what the API exposes."
+     data-hintD="The migration created the database column, but the API shape is decided later.">
+  <p class="q">The SPA team reports a field missing from the API response, though the column exists in the database. Which file do you open first?</p>
+  <div class="opts">
+    <button class="opt" data-opt="a">The Resource class, in app/Http/Resources</button>
+    <button class="opt" data-opt="b">The Controller class, in app/Http/Controllers</button>
+    <button class="opt" data-opt="c">The Model class, inside the app/Models folder</button>
+    <button class="opt" data-opt="d">The Migration file, in database/migrations</button>
+  </div>
+  <div class="feedback"></div>
+</div>
+
+<div class="recall">
+  <p class="q">From memory: name the four files behind any Laravel API endpoint, and the one question you ask each one.</p>
+  <textarea placeholder="Four files, four questions. Order matters — it is your reading order."></textarea>
+  <button class="reveal-btn">Check my answer</button>
+  <div class="recall-answer">
+    <p><strong>1.</strong> <code>routes/api.php</code> — which controller handles this URL?<br>
+    <strong>2.</strong> <code>app/Http/Controllers/</code> — what happens on this request?<br>
+    <strong>3.</strong> <code>app/Models/</code> — what is this thing, and what relates to it?<br>
+    <strong>4.</strong> <code>app/Http/Resources/</code> — which fields reach the frontend?</p>
+    <p>Got the four files but not the questions? Solid pass. The questions are what make the list
+    operational rather than trivia — they come back in Lesson 3.</p>
+  </div>
+</div>
+
+<h2><span class="num">6</span>Your task before Lesson 3</h2>
+
+<p>You do not have repo access right now, so this is built to work without it. Two things,
+roughly twenty minutes:</p>
+
+<p><strong>One — trace an endpoint from the outside.</strong> You have called your own API
+hundreds of times from the SPA. Pick one endpoint you know well. Open devtools, trigger it, and
+write down the URL, the verb, and the exact JSON shape that comes back. Then <em>predict</em> the
+four files: what is the controller probably called? Which method handles it? Which fields would
+be listed in the Resource's <code>toArray</code>? <strong>Bring me your prediction.</strong> We
+will check it against the real code when you next have access — and being wrong in a specific
+way teaches you far more than being vaguely right.</p>
+
+<p><strong>Two — the recon commands, whenever you next get access.</strong> Still outstanding
+from Lesson 1, and still the thing that would most sharpen what I teach you:</p>
+
+<pre><code>php artisan --version
+php artisan route:list --path=halaqa
+composer show | Select-String tenan</code></pre>
+
+<p>Plus: is there a <code>tests/</code> folder with real files in it?</p>
+
+<div class="source">
+  <span class="label">Primary source — read this next</span>
+  <p><a href="https://laravel.com/docs/13.x/controllers#resource-controllers">Laravel 13.x —
+  Resource Controllers</a>. Read down to "API Resource Routes" and stop there; the singleton and
+  nested-resource sections are not useful to you yet.</p>
+  <p>Then, if you have appetite:
+  <a href="https://laravel.com/docs/13.x/eloquent-resources#concept-overview">API Resources —
+  Concept Overview</a> (the JSON shaping layer) ·
+  <a href="https://laravel.com/docs/13.x/routing#implicit-binding">Implicit Route Model
+  Binding</a> · full list in <a href="../RESOURCES.md">RESOURCES.md</a>.</p>
+</div>
+
+<div class="ask-teacher">
+  <span class="label">Ask your teacher</span>
+  <p>I am your teacher here, not a static page — ask me anything that did not land. Good
+  questions right now: <em>"What is <code>auth:sanctum</code>, and how does it differ from
+  <code>auth</code>?"</em> · <em>"What does <code>extends Controller</code> actually give me?"</em> ·
+  <em>"Show me <code>store</code>, not just <code>show</code>."</em> ·
+  <em>"Why <code>$this-&gt;teacher-&gt;name</code> — where did that come from?"</em> ·
+  <em>"What is the N+1 problem I keep hearing about?"</em></p>
+  <p>That last one is lurking inside the Resource example above —
+  <code>$this-&gt;students-&gt;count()</code> is a trap in a list endpoint. Ask me and I will
+  show you exactly why.</p>
+</div>
+
+<div class="footer">
+  <p class="meta">
+    <strong>Lesson 2 of an ongoing course</strong> · Next: Eloquent — asking the database
+    questions, relationships, and the N+1 trap.<br>
+    Workspace: <a href="../MISSION.md">MISSION.md</a> ·
+    <a href="../RESOURCES.md">RESOURCES.md</a> ·
+    <a href="0001-the-request-lifecycle.html">← Lesson 1</a> ·
+    <a href="../reference/0001-request-lifecycle-cheatsheet.html">Lifecycle cheat sheet</a> ·
+    <a href="../reference/0002-api-endpoint-anatomy.html">Endpoint anatomy →</a>
+  </p>
+</div>
+
+<script src="../assets/quiz.js"></script>
+</body>
+</html>
