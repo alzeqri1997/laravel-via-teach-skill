@@ -12,6 +12,25 @@
 - **Read before write.** The mission is contributing to an existing codebase, so "open this file
   and explain it" beats "build this from blank" as a lesson format.
 
+## Stated preferences
+
+- **Teach the 10 → 11+ version delta alongside the main material** (asked 2026-10-12, LR-0005).
+  Scoped as skippable sidebars via the `.vshift` component; Ethaaf's version is always the
+  default; **never in quizzes**. Consolidated delta table lives in Reference 04.
+- He asks good meta-questions about the teaching itself ("is 10 different from 13?", "what if you
+  teach me the difference"). Treat these as signal that he wants to understand the *shape* of
+  what he is learning, not just the content. Answer them properly.
+
+## Teaching discipline (learned from two errors)
+
+**Grep the repo before asserting anything about it.** Two avoidable mistakes so far:
+1. Taught two lessons against Laravel 13 docs without checking the version (LR-0004)
+2. Suggested proposing `preventLazyLoading` as a contribution — Ethaaf already enables it in
+   `AppServiceProvider::preventNPlusOneQueries()` (LR-0005)
+
+Both were caught before reaching him in final form, but the pattern is the same: asserting
+without verifying. **Check the codebase, then teach.**
+
 ## Environment (verified 2026-08-09)
 
 - Windows 11 Home, Laragon stack
@@ -40,25 +59,24 @@ team-written architecture guide. Outranks any external tutorial.
 Never pitch a version before the codebase is known. Teach version-general, or ask. Two lessons
 were written against the wrong major version.
 
-## Curriculum sketch (revised 2026-10-11 — grounded in Ethaaf)
+## Curriculum sketch (revised 2026-10-12)
 
 1. ✅ Request lifecycle
 2. ✅ Reading an API endpoint — the four files
 3. ✅ First real trace — Ethaaf's association students endpoint + the tenancy hazard
-4. Eloquent in Ethaaf — relationships, eager loading, **N+1** (read from real repository code)
-5. The Service/Repository pattern — where logic belongs when he writes his own
-6. **Tenant scoping in depth** — `TenantScope`, actor scopes, the central-context trap
-7. Validation — Form Requests via the 422 payload (`MeasurementFormRequest` is a real example)
-8. Testing — read an existing Feature test, then write one. **Moved earlier**: a real suite
-   exists, and it is the mission's final success criterion.
-9. First real pull request — Pint + PHPStan + tests green before opening
+4. ✅ Eloquent — relationships, eager loading, **N+1**, + the first version-delta section
+5. Service/Repository pattern — **where his own code goes when he writes it**. The shift from
+   reading to writing; last stop before he can safely author something.
+6. Validation — Form Requests via the 422 payload (`MeasurementFormRequest` is a real example
+   with a `withValidator()` rule: grades must sum to 100)
+7. Tenant scoping in depth — `TenantScope`, actor scopes, central-context trap
+8. Testing — read an existing Feature test, then write one
+9. First real pull request — Pint + PHPStan + tests green
 
-**Blade out of scope.** Filament exists but is not the mission — mention only as a central
-context where the tenant scope is OFF.
-
-### The strongest teaching move available
-Ahmed consumed these exact endpoints from the SPA for years. "You have seen this JSON — here is
-the file that produced it" works repeatedly and should be reused.
+**Candidate first ticket identified:** `performance-risk-report.md` is a backlog of measured,
+unassigned N+1 bugs. A documented fix there is close to an ideal first PR — diagnosis already
+written, mechanical local fix, improvement measurable in a number. He was asked in Lesson 4 to
+pick one and bring his reasoning.
 
 ## Session log
 
@@ -76,3 +94,10 @@ the file that produced it" works repeatedly and should be reused.
   shipped. Tenancy hazard taught from the team's own `CLAUDE.md`: **TenantScope is a no-op in
   central context.** Task set: run `route:list`, trace an endpoint he personally built a screen
   against, read `CLAUDE.md`.
+- **2026-10-12** — Asked whether 10 differs from 13, then asked for the delta to be taught
+  alongside (LR-0005). New asset: `version.css` (`.vshift` sidebars, impact badges). Lesson 4
+  (relationships + N+1, from the real `AssociationStudentRepository` and the 10,000-query
+  performance report) + Reference 04 (Eloquent recipes + full version delta) shipped. Corrected
+  two of my own errors: the 11 skeleton is **opt-in** (15-min upgrade, not a rewrite), and Ethaaf
+  **already enables** `preventLazyLoading`. Task set: count queries in Telescope, pick one N+1
+  from the report and bring the reasoning.

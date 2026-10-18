@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 4 · Relationships and the N+1 Trap</title>
+<link rel="stylesheet" href="../assets/course.css">
+<link rel="stylesheet" href="../assets/quiz.css">
+<link rel="stylesheet" href="../assets/trace.css">
+<link rel="stylesheet" href="../assets/version.css">
+</head>
+<body>
+
+<header class="masthead">
+  <p class="eyebrow">Lesson 04 · Ethaaf</p>
+  <h1>Relationships and the N+1 Trap</h1>
+  <p class="standfirst">One innocent line in a loop can fire ten thousand queries. Ethaaf has
+  this bug in production, documented and measured — today you learn to see it.</p>
+  <p class="meta">Laravel 10.50.2 · ~30 minutes · Prerequisite: <a href="0003-your-first-real-trace.html">Lesson 3</a></p>
+</header>
+
+<div class="callout bridge">
+  <span class="label">New in this lesson: version shifts</span>
+  <p>You asked to learn the 10 → 11+ differences along the way. From now on, grey sidebars like
+  the one below mark places where Ethaaf's Laravel 10 differs from what newer docs, blog posts
+  and AI answers will tell you. <strong>Ethaaf's version is always the default</strong> — the
+  sidebars are reference, skippable on a first read, and never appear in the quizzes.</p>
+</div>
+
+<h2><span class="num">1</span>Cold recall</h2>
+
+<div class="recall">
+  <p class="q">Two from Lesson 3, from memory: (a) in what situation does Ethaaf's tenant scope silently stop protecting you, and (b) what must always replace a scope that has been deliberately dropped?</p>
+  <textarea placeholder="Both answers. The second one comes back today, in a new place."></textarea>
+  <button class="reveal-btn">Check my answer</button>
+  <div class="recall-answer">
+    <p><strong>(a)</strong> When <code>tenancy()-&gt;initialized</code> is false — central context:
+    the Filament panel, a plain queue job, a console command. <code>TenantScope</code> becomes a
+    no-op and queries return every tenant's rows.</p>
+    <p><strong>(b)</strong> An explicit constraint. In <code>StudentService</code> that was
+    <code>forTenants(...)</code> with a resolved tenant set. <strong>A dropped scope with nothing
+    replacing it is a data leak.</strong> Today you will see this exact pattern again, one layer
+    deeper — and discover it has a second failure mode nobody warns you about.</p>
+  </div>
+</div>
+
+<h2><span class="num">2</span>Relationships: the two you will meet most</h2>
+
+<p>From Ethaaf's <code>Student</code> model, the shapes you already saw in Lesson 2:</p>
+
+<pre><code>public function mosque()   { return $this-&gt;belongsTo(Mosque::class); }
+public function sections() { return $this-&gt;belongsToMany(Section::class); }</code></pre>
+
+<p>The naming convention tells you which is which: <strong>singular means one</strong>
+(<code>belongsTo</code>), <strong>plural means many</strong> (<code>hasMany</code>,
+<code>belongsToMany</code>). Read the method name and you know the shape before reading the body.</p>
+
+<p>Accessing one looks like a property, but <em>is not</em>:</p>
+
+<table>
+  <thead>
+    <tr><th style="width:34%">You write</th><th style="width:26%">You get</th><th>What happens</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>$student-&gt;mosque</code></td>
+      <td>A Mosque model</td>
+      <td><strong>Runs a query</strong>, then caches the result on the model</td>
+    </tr>
+    <tr>
+      <td><code>$student-&gt;mosque()</code></td>
+      <td>A query builder</td>
+      <td>Runs nothing yet — you can chain <code>-&gt;where(...)</code></td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout hazard">
+  <span class="label">The whole lesson in one sentence</span>
+  <p><strong>Property access runs a database query.</strong> It looks like reading a field on an
+  object — it looks free. It is not. Put it inside a loop over 500 students and you have just
+  written 500 queries. That is the N+1 trap, and it is the single most common performance bug in
+  every Laravel codebase on earth.</p>
+</div>
+
+<h2><span class="num">3</span>N+1, as it actually appears</h2>
+
+<p>Lazy loading — one query per row, discovered one at a time:</p>
+
+<pre><code>$students = Student::all();              // 1 query
+
+foreach ($students as $student) {
+    echo $student-&gt;mosque-&gt;name;          // +1 query. Every. Single. Time.
+}
+// 500 students = 501 queries</code></pre>
+
+<p>Eager loading — tell Eloquent up front what you will need:</p>
+
+<pre><code>$students = Student::with('mosque')-&gt;get();   // 2 queries, total
+
+foreach ($students as $student) {
+    echo $student-&gt;mosque-&gt;name;              // already in memory. Free.
+}</code></pre>
+
+<p>Two queries instead of 501. Eloquent fetches the students, collects their
+<code>mosque_id</code>s, and runs <strong>one</strong>
+<code>WHERE id IN (…)</code> to get every mosque at once
+(<a href="https://laravel.com/docs/10.x/eloquent-relationships#eager-loading">docs</a>).</p>
+
+<div class="callout bridge">
+  <span class="label">You have met this before</span>
+  <p>This is the same mistake as calling <code>fetch()</code> inside a <code>.map()</code> instead
+  of requesting a list endpoint once. You already have the instinct — the difference is that on
+  the frontend the network tab screams at you. Here there is no network tab. The queries are
+  invisible unless you go looking, which is why this bug survives in production for years.</p>
+</div>
+
+<h2><span class="num">4</span>Ethaaf's real N+1 problem</h2>
+
+<p>This is not hypothetical in your codebase. Open
+<code>performance-risk-report.md</code> at the repo root:</p>
+
+<pre><code>ComprehensiveStatisticsService — a single call can trigger
+10,000+ database queries through cascading N+1 patterns
+
+getCompetitiveAnalysis()   CRITICAL   10,000+   calls 4 other N+1 methods
+getLevelsStatistics()      CRITICAL   L×S       double nested N+1 loop
+TermSectionStudentsFeeJob  →  5–20 minutes blocking</code></pre>
+
+<p>And the shape that causes it, straight from that report:</p>
+
+<pre><code>foreach ($mosques as $mosque) {
+    $sectionsCount = Section::where('mosque_id', $mosque-&gt;id)-&gt;count();   // N+1
+}</code></pre>
+
+<p>Note it is not even property access here — it is an explicit query inside a loop. Same
+disease. One query per mosque, where a single <code>withCount</code> would have done.</p>
+
+<div class="callout note">
+  <span class="label">Why this matters for your promotion, specifically</span>
+  <p>This report is a <strong>backlog of known, measured, unassigned problems</strong> in the
+  codebase you are trying to contribute to. Fixing a documented N+1 is close to the ideal first
+  backend ticket: the diagnosis is already written down, the fix is mechanical and local, and the
+  improvement is measurable in a number you can put in the PR description. Read that file this
+  week.</p>
+</div>
+
+<h2><span class="num">5</span>How Ethaaf does it right</h2>
+
+<p>Now the good code — the repository behind the endpoint you traced in Lesson 3:</p>
+
+<p class="filename">app/Repositories/Association/AssociationStudentRepository.php</p>
+<pre><code>public function listRelations(): array
+{
+    return [
+        'contact' =&gt; $this-&gt;crossTenant(['id', 'contactable_id', 'contactable_type', 'name', 'phone']),
+        'tenant',
+        'mosque' =&gt; $this-&gt;crossTenant(['id', 'name']),
+        'sectionsWithoutTerm' =&gt; $this-&gt;crossTenant(),
+        'plan' =&gt; $this-&gt;crossTenant(),
+    ];
+}</code></pre>
+
+<p>That array is an eager-load manifest — every relation the roster's Resource will touch,
+declared up front so the page costs a fixed handful of queries no matter how many students are
+on it. Two refinements worth naming:</p>
+
+<div class="trace">
+  <div class="trace-step">
+    <span class="trace-label">crossTenant(['id', 'name'])</span>
+    <p><strong>Column pruning.</strong> The array selects only the columns actually needed. Less
+    data over the wire, less memory. Note the comment in the real file explaining why
+    <code>'tenant'</code> is deliberately <em>not</em> pruned — Stancl stores name and manager as
+    virtual attributes inside a <code>data</code> JSON column, so selecting <code>id,name</code>
+    errors with "Unknown column". <strong>Pruning is not free; it requires knowing the model.</strong></p>
+  </div>
+  <div class="trace-step">
+    <span class="trace-label">sectionsWithoutTerm, not sections</span>
+    <p><code>Student::sections()</code> pins the pivot to the current term <em>inside the relation
+    definition</em>. Across an association that term belongs to one مجمع, so the column came back
+    empty for every other one. A relation can carry constraints you did not ask for — read the
+    model before trusting a relation name.</p>
+  </div>
+</div>
+
+<h2><span class="num">6</span>The twist: eager loading re-applies global scopes</h2>
+
+<p>Here is the part that connects today's lesson to Lesson 3's hazard, and it is genuinely
+subtle. From <code>LoadsCrossTenantRelations</code>:</p>
+
+<div class="callout hazard">
+  <span class="label">From the code's own documentation</span>
+  <p><em>"Constraining the PARENT query to the association's مجمعات is not enough. <strong>Every
+  eager-loaded relation runs as its own query and re-applies its own model's global
+  scopes</strong> — including the tenant scope. … None of the roster's rows belong to it, so
+  every relation came back empty: teachers with a null national_id, students with no mosque and
+  no حلقة, on rows that plainly had them."</em></p>
+</div>
+
+<p>Read that symptom again, because it is how this bug announces itself in the wild:
+<strong>rows that plainly had data showing blank columns.</strong> Not an error, not a crash —
+just quietly empty fields. If a user ever reports that, this is now the first thing you check.</p>
+
+<p>The mechanism: <code>with('mosque')</code> is not a SQL join. It is a <em>second query</em>
+against the <code>Mosque</code> model — and that second query re-applies <code>TenantScope</code>
+from scratch. The parent query being correctly scoped does nothing for it.</p>
+
+<p>And the same discipline from Lesson 3 applies to the fix:</p>
+
+<pre><code>protected function crossTenant(array $columns = []): Closure
+{
+    return function ($query) use ($columns) {
+        $query-&gt;withoutGlobalScopes([StanclTenantScope::class, TermScope::class]);
+        // …
+    };
+}</code></pre>
+
+<p>Scopes removed <strong>by class name</strong>, never bare — exactly the rule from Reference 03.
+And the team wrote down why it is safe: <em>"the relation is reached by foreign key from a row
+that has passed the association check, so it cannot pull in anything the caller was not entitled
+to see."</em> The parent query is the authorisation boundary; the relations hang off it.</p>
+
+<h3>Fail closed</h3>
+
+<p>One more line from that repository, worth memorising as a principle:</p>
+
+<pre><code>return $query-&gt;whereIn(
+    $this-&gt;model-&gt;getTable().'.tenant_id',
+    $tenantIds ?: ['__none__'],       // ← fail closed
+);</code></pre>
+
+<p>If the tenant list is somehow empty, the query matches the impossible value
+<code>'__none__'</code> and returns nothing. The team's comment: <em>"An empty list must mean 'no
+students', never 'all of them'."</em></p>
+
+<p>That is a security instinct worth stealing permanently. When a filter degenerates, it should
+degenerate toward <strong>showing nothing</strong>, never toward showing everything.</p>
+
+<h2><span class="num">7</span>Retrieval practice</h2>
+
+<div class="quiz"
+     data-answer="b"
+     data-why="Property access on a relationship runs a query. Inside a loop over 500 rows, that is 500 extra queries plus the original one."
+     data-hintA="That would be true with eager loading. Plain all() loads only the students themselves."
+     data-hintC="Eloquent does not batch lazily-accessed relations. Each access is its own query."
+     data-hintD="The relation is not cached across different models — each student fetches its own.">
+  <p class="q"><code>Student::all()</code> returns 500 students, then a loop reads <code>$student-&gt;mosque-&gt;name</code> on each. How many queries run?</p>
+  <div class="opts">
+    <button class="opt" data-opt="a">Two queries — one for each of the tables</button>
+    <button class="opt" data-opt="b">501 queries — one per student, plus one</button>
+    <button class="opt" data-opt="c">Three queries — Laravel batches the loads</button>
+    <button class="opt" data-opt="d">One query — the relation is already cached</button>
+  </div>
+  <div class="feedback"></div>
+</div>
+
+<div class="quiz"
+     data-answer="d"
+     data-why="Each eager-loaded relation is a separate query against its own model, so it re-applies that model's global scopes from scratch."
+     data-hintA="It is not a join. Eloquent runs a second query and matches the results up in PHP."
+     data-hintB="Scopes are not inherited from the parent query — the relation query is built independently."
+     data-hintC="The parent being scoped correctly has no effect on the relation's own query.">
+  <p class="q">Why did eager-loaded relations come back empty on Ethaaf's association roster?</p>
+  <div class="opts">
+    <button class="opt" data-opt="a">The join lost the rows through a bad condition</button>
+    <button class="opt" data-opt="b">The parent query passed its scopes to children</button>
+    <button class="opt" data-opt="c">The parent query was not correctly constrained</button>
+    <button class="opt" data-opt="d">The relation query re-applied its own tenant scope</button>
+  </div>
+  <div class="feedback"></div>
+</div>
+
+<div class="quiz"
+     data-answer="a"
+     data-why="Fail closed: an empty filter must return nothing rather than everything. The impossible sentinel value guarantees it."
+     data-hintB="Returning all rows on an empty list is precisely the data leak being prevented."
+     data-hintC="It is not about performance — it is about what happens when input degenerates."
+     data-hintD="No error is thrown; the query runs normally and matches zero rows.">
+  <p class="q">Why does the repository pass <code>['__none__']</code> when the tenant list is empty?</p>
+  <div class="opts">
+    <button class="opt" data-opt="a">So an empty list returns no rows at all</button>
+    <button class="opt" data-opt="b">So an empty list returns all of the rows</button>
+    <button class="opt" data-opt="c">So the database can cache the query plan</button>
+    <button class="opt" data-opt="d">So Eloquent throws a descriptive exception</button>
+  </div>
+  <div class="feedback"></div>
+</div>
+
+<div class="recall">
+  <p class="q">A user reports that a column on a list screen is blank for most rows, though the data is definitely in the database. Name two different causes you now know of.</p>
+  <textarea placeholder="Both are in this lesson. One is tenancy, one is relation definitions."></textarea>
+  <button class="reveal-btn">Check my answer</button>
+  <div class="recall-answer">
+    <p><strong>1. The eager-loaded relation re-applied a global scope.</strong> The relation query
+    is its own query; <code>TenantScope</code> (or <code>TermScope</code>) filtered it down to
+    nothing. Fix: drop those scopes <em>by class name</em> on the eager load, as
+    <code>crossTenant()</code> does.</p>
+    <p><strong>2. The relation itself carries a hidden constraint.</strong>
+    <code>Student::sections()</code> pins to the current term inside the relation definition, so
+    it resolves for one مجمع and is empty for the rest. Fix: use the unconstrained relation
+    (<code>sectionsWithoutTerm</code>) and de-duplicate downstream.</p>
+    <p>A third, more mundane: the field was never added to the <strong>Resource</strong>
+    (Lesson 2). Check that first — it is the cheapest to rule out.</p>
+  </div>
+</div>
+
+<h2><span class="num">8</span>Version shift — Eloquent, 10 → 11+</h2>
+
+<p>Your first delta section. None of this changes what you write in Ethaaf today; it changes how
+you read documentation and other people's code.</p>
+
+<aside class="vshift">
+  <span class="vlabel">10 → 11+ · casts</span>
+  <p>Ethaaf declares casts as a <strong>property</strong>:
+  <code>protected $casts = ['approved_at' =&gt; 'datetime'];</code> — correct, and still supported
+  in 11+.</p>
+  <p>Laravel 11 added a <code>casts()</code> <strong>method</strong> on the base model as an
+  alternative. Newer tutorials show the method form. In Ethaaf, use the property.
+  (<a href="https://laravel.com/docs/11.x/upgrade#eloquent-model-casts-method">upgrade notes</a>)</p>
+</aside>
+
+<aside class="vshift">
+  <span class="vlabel">10 → 11+ · lazy-load guard</span>
+  <p><code>Model::preventLazyLoading()</code> exists in <strong>both</strong> 10 and 11+, so docs
+  you find on it apply to Ethaaf unchanged. See the box below — your codebase already uses it.
+  (<a href="https://laravel.com/docs/10.x/eloquent-relationships#preventing-lazy-loading">10.x docs</a>)</p>
+</aside>
+
+<div class="callout bridge">
+  <span class="label">Ethaaf already guards against this — and that changes your job</span>
+  <p>In <code>app/Providers/AppServiceProvider.php</code>:</p>
+  <pre><code>Model::preventLazyLoading(!app()-&gt;isProduction());
+
+Model::handleLazyLoadingViolationUsing(function ($model, $relation) {
+    if (isLocal()) {
+        throw new LazyLoadingViolationException($model, $relation);
+    }
+    // …otherwise log it
+});</code></pre>
+  <p>So <strong>locally, an accidental lazy load throws an exception</strong>; outside production
+  it is logged; in production it is allowed through so a missed relation cannot take the site
+  down. This is a well-built safety net.</p>
+  <p>Two consequences for you. First, <strong>if you hit
+  <code>LazyLoadingViolationException</code>, you have not broken anything</strong> — the guard
+  is telling you exactly what this lesson is about, naming the model and the relation. Add that
+  relation to the eager-load list and move on. Second, the 10,000-query paths in the report are
+  mostly explicit queries inside loops, which this guard <em>cannot</em> catch. The net stops
+  accidental lazy loads; it does not stop a deliberate <code>Section::where(...)</code> in a
+  <code>foreach</code>. That is why reading the report still matters.</p>
+</div>
+
+<aside class="vshift breaking">
+  <span class="vlabel">10 → 11 · migrations, if an upgrade ever happens</span>
+  <p>Two genuine hazards, both rated <strong>high impact</strong>. <code>-&gt;change()</code> on a
+  column now <strong>drops any modifier you do not re-state</strong> — an existing
+  <code>unsigned()-&gt;default(1)</code> silently disappears unless repeated. And
+  <code>float</code>/<code>double</code> column types were rewritten.</p>
+  <p>Not your problem today, but these are the two that bite hardest on a 10 → 11 upgrade.
+  (<a href="https://laravel.com/docs/11.x/upgrade#modifying-columns">upgrade guide</a>)</p>
+</aside>
+
+<div class="callout note">
+  <span class="label">Correcting something I told you earlier</span>
+  <p>I previously implied the restructured skeleton (<code>bootstrap/app.php</code> replacing
+  <code>app/Http/Kernel.php</code>) was the main obstacle to upgrading. Having checked the
+  official guide: it is <strong>opt-in</strong>. Laravel explicitly says <em>"we do not recommend
+  that Laravel 10 applications upgrading to Laravel 11 attempt to migrate their application
+  structure"</em> — 11 supports the 10 layout deliberately. The estimated upgrade time is
+  <strong>15 minutes</strong>. The real hazards are the migration changes above and Sanctum 3→4.</p>
+  <p>The practical consequence for you is unchanged: when 11+ docs describe
+  <code>bootstrap/app.php</code>, Ethaaf will not have it. Look in
+  <code>app/Http/Kernel.php</code> instead.</p>
+</div>
+
+<h2><span class="num">9</span>Your task before Lesson 5</h2>
+
+<p><strong>One — see the queries.</strong> Ethaaf has Telescope installed. Open
+<code>/telescope</code> locally, hit the association students endpoint, and look at the
+<strong>Queries</strong> tab. Count them. Then find a screen you built that feels slow and count
+those. <strong>This is the single most valuable habit in this lesson</strong> — it converts an
+invisible problem into a number.</p>
+
+<p><strong>Two — read the report.</strong> Open <code>performance-risk-report.md</code> and pick
+<em>one</em> entry you believe you could fix. Do not fix it. Write down: which file, what the
+loop does, and what you would replace it with. Bring it to me and we will check your reasoning
+before you ever touch the code.</p>
+
+<p><strong>Three — carry Lesson 3 forward.</strong> Did you run <code>route:list</code> and trace
+an endpoint? If not, that is still the highest-value thirty minutes available to you.</p>
+
+<div class="source">
+  <span class="label">Primary source — read this next</span>
+  <p><a href="https://laravel.com/docs/10.x/eloquent-relationships#eager-loading">Laravel 10.x —
+  Eager Loading</a>. Read from "Eager Loading" to "Preventing Lazy Loading" and stop. Note the
+  <code>10.x</code> in that URL.</p>
+  <p>Then, inside the repo: <strong><code>performance-risk-report.md</code></strong> — a measured
+  catalogue of real N+1 bugs in the code you are about to work on. No tutorial will ever be this
+  relevant to you.</p>
+</div>
+
+<div class="ask-teacher">
+  <span class="label">Ask your teacher</span>
+  <p>Strong questions right now: <em>"Show me how to rewrite the <code>getLevelsStatistics</code>
+  loop."</em> · <em>"What is <code>withCount</code> and when do I use it instead of
+  <code>with</code>?"</em> · <em>"How do I know which relations a Resource will touch?"</em> ·
+  <em>"Walk me through enabling <code>preventLazyLoading</code> safely."</em> ·
+  <em>"I counted the queries on my screen and got N — is that bad?"</em></p>
+  <p>That last one is the best question in the list. Bring me a number and we will work out
+  together whether it is a problem and what the fix would look like.</p>
+</div>
+
+<div class="footer">
+  <p class="meta">
+    <strong>Lesson 4 of an ongoing course</strong> · Next: the Service/Repository pattern — where
+    your own code goes when you write it.<br>
+    Workspace: <a href="../MISSION.md">MISSION.md</a> ·
+    <a href="../RESOURCES.md">RESOURCES.md</a> ·
+    <a href="0003-your-first-real-trace.html">← Lesson 3</a> ·
+    <a href="../reference/0003-ethaaf-field-guide.html">Ethaaf field guide</a> ·
+    <a href="../reference/0004-eloquent-and-versions.html">Eloquent + version delta →</a>
+  </p>
+</div>
+
+<script src="../assets/quiz.js"></script>
+</body>
+</html>

@@ -1,0 +1,82 @@
+/* version.css — the "version shift" component.
+ *
+ * Ethaaf runs Laravel 10; most material written since 2024 targets 11+. This marks the
+ * places where that gap would actually bite: a doc page describing a file Ethaaf does
+ * not have, a helper that does not exist yet, a Stack Overflow answer that will not run.
+ *
+ * Deliberately secondary to the body text. Ethaaf's version is always the default and is
+ * taught as the real thing; this is a sidebar you can skip on a first read and come back
+ * to the day an upgrade is proposed. It never appears in quizzes.
+ *
+ *   <aside class="vshift">
+ *     <span class="vlabel">10 → 11+</span>
+ *     <p>What changes, and whether it matters to you today.</p>
+ *   </aside>
+ *
+ * Add .breaking for a genuine upgrade hazard (data loss, silent behaviour change).
+ */
+
+.vshift {
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--ink-faint);
+  border-radius: 0 4px 4px 0;
+  background: transparent;
+  padding: 0.75rem 1rem;
+  margin: 0 0 1.3rem;
+  font-size: 0.86rem;
+  line-height: 1.5;
+  color: var(--ink-soft);
+}
+
+.vshift p { margin: 0 0 0.6rem; }
+.vshift p:last-child { margin-bottom: 0; }
+
+.vshift .vlabel {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--ink-faint);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  padding: 0.1em 0.42em;
+  margin-bottom: 0.45rem;
+}
+
+/* A real upgrade hazard rather than a neutral difference. */
+.vshift.breaking { border-left-color: var(--warn); }
+.vshift.breaking .vlabel { color: var(--warn); border-color: var(--warn); }
+
+/* Inline marker for "this exists in 11+ only", used mid-sentence. */
+.v11 {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--ink-faint);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  padding: 0.08em 0.36em;
+  white-space: nowrap;
+}
+
+/* ── Impact badges, for the delta reference table ─────── */
+
+.impact {
+  font-family: var(--sans);
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border-radius: 3px;
+  padding: 0.12em 0.44em;
+  white-space: nowrap;
+}
+.impact.high { color: var(--accent); background: var(--accent-dim); }
+.impact.med  { color: var(--warn);   background: var(--warn-dim); }
+.impact.low  { color: var(--ink-faint); background: var(--paper-warm); }
+
+@media print {
+  .vshift { break-inside: avoid; }
+}

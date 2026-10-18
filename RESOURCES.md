@@ -11,6 +11,13 @@
 - **`C:/laragon/www/ethaaf/tests/`**
   Unit, Feature and Architecture suites. Existing tests are worked examples of how the team
   expects code to be exercised — read one before writing one.
+- **`C:/laragon/www/ethaaf/performance-risk-report.md`**
+  A measured catalogue of real N+1 problems in the codebase — file, line, severity, estimated
+  query count. Documents a path costing **10,000+ queries** in one call.
+  Use for: **candidate first tickets.** Diagnosis is already written; the fixes are mechanical.
+- **`C:/laragon/www/ethaaf/app/Providers/AppServiceProvider.php`**
+  `preventNPlusOneQueries()` — throws `LazyLoadingViolationException` locally, logs outside
+  production. Use for: understanding the safety net already protecting him.
 - **Ethaaf route files** — `routes/api/v1/…`
   Several have long explanatory header comments (see `association/students.php`). Unusually
   well documented; read the comments, not just the code.
@@ -52,6 +59,14 @@
   **CONFIRMED: this is Ethaaf's package and mode** (`stancl/tenancy` ^3.8).
   Use for: the mechanism behind `TenantScope` and `BelongsToTenant`. Highest-priority external
   resource for the mission.
+- [Eloquent Relationships — Eager Loading (10.x)](https://laravel.com/docs/10.x/eloquent-relationships#eager-loading)
+  `with()`, `withCount()`, nested loads, column pruning, `preventLazyLoading`.
+  Use for: the N+1 trap — the most common performance bug he will meet. Verified 2026-10-12.
+- [Laravel 11 Upgrade Guide](https://laravel.com/docs/11.x/upgrade)
+  The authoritative 10 → 11 delta with impact ratings. Confirms the skeleton restructure is
+  **opt-in** and the upgrade is estimated at 15 minutes.
+  Use for: the version-delta sidebars, and the day an Ethaaf upgrade is proposed.
+  Verified 2026-10-12.
 - [Eloquent — Query Scopes (10.x)](https://laravel.com/docs/10.x/eloquent#query-scopes)
   Global and local scopes — the Laravel feature tenant isolation is built on.
   Use for: understanding how a `WHERE tenant_id = ?` gets appended invisibly.

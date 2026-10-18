@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reference 04 · Eloquent &amp; the Version Delta</title>
+<link rel="stylesheet" href="../assets/course.css">
+<link rel="stylesheet" href="../assets/trace.css">
+<link rel="stylesheet" href="../assets/version.css">
+</head>
+<body>
+
+<header class="masthead">
+  <p class="eyebrow">Reference 04 · Ethaaf</p>
+  <h1>Eloquent &amp; the Version Delta</h1>
+  <p class="standfirst">Relationships, eager loading and N+1 fixes — then the Laravel 10 → 13
+  differences, so a newer doc page never costs you an afternoon.</p>
+  <p class="meta">Laravel 10.50.2 · verified against the docs and repo 2026-10-12</p>
+</header>
+
+<h2><span class="num">1</span>Relationship types</h2>
+
+<table>
+  <thead><tr><th style="width:26%">Method</th><th style="width:20%">Shape</th><th>Reads as</th></tr></thead>
+  <tbody>
+    <tr><td><code>belongsTo</code></td><td>one → one</td><td>This row holds the foreign key</td></tr>
+    <tr><td><code>hasOne</code></td><td>one → one</td><td>The other row holds the foreign key</td></tr>
+    <tr><td><code>hasMany</code></td><td>one → many</td><td>Many rows point back here</td></tr>
+    <tr><td><code>belongsToMany</code></td><td>many ↔ many</td><td>Joined through a pivot table</td></tr>
+    <tr><td><code>morphTo</code> / <code>morphMany</code></td><td>polymorphic</td><td>Can attach to several model types</td></tr>
+  </tbody>
+</table>
+
+<p>Naming convention: <strong>singular method = one</strong>, <strong>plural = many</strong>.</p>
+
+<h2><span class="num">2</span>The access distinction</h2>
+
+<table>
+  <thead><tr><th style="width:34%">Expression</th><th>Result</th></tr></thead>
+  <tbody>
+    <tr><td><code>$student-&gt;mosque</code></td><td><strong>Runs a query</strong>, returns the model, caches it</td></tr>
+    <tr><td><code>$student-&gt;mosque()</code></td><td>Returns a builder — chain <code>where()</code>, then <code>get()</code></td></tr>
+    <tr><td><code>$student-&gt;relationLoaded('mosque')</code></td><td>True if already eager loaded</td></tr>
+  </tbody>
+</table>
+
+<div class="callout hazard">
+  <span class="label">The rule</span>
+  <p>Property access inside a loop = one query per iteration. Always eager load what a loop, a
+  Resource, or an export will touch.</p>
+</div>
+
+<h2><span class="num">3</span>Eager loading recipes</h2>
+
+<table>
+  <thead><tr><th style="width:46%">Pattern</th><th>Use when</th></tr></thead>
+  <tbody>
+    <tr><td><code>::with('mosque')</code></td><td>You will read the relation</td></tr>
+    <tr><td><code>::with(['mosque', 'plan'])</code></td><td>Several relations</td></tr>
+    <tr><td><code>::with('sections.teacher')</code></td><td>Nested — dot notation</td></tr>
+    <tr><td><code>::with(['mosque' =&gt; fn($q) =&gt; $q-&gt;select('id','name')])</code></td><td>Column pruning</td></tr>
+    <tr><td><code>::withCount('students')</code></td><td>You only need the <strong>number</strong> → <code>$row-&gt;students_count</code></td></tr>
+    <tr><td><code>$model-&gt;load('mosque')</code></td><td>Model already fetched; load after the fact</td></tr>
+    <tr><td><code>::has('students')</code> / <code>::whereHas(...)</code></td><td>Filter parents by their children</td></tr>
+  </tbody>
+</table>
+
+<p>Two queries, never a join
+(<a href="https://laravel.com/docs/10.x/eloquent-relationships#eager-loading">docs</a>):</p>
+
+<pre><code>select * from students
+select * from mosques where id in (1, 2, 3, …)</code></pre>
+
+<div class="callout note">
+  <span class="label">withCount beats with for counting</span>
+  <p><code>-&gt;students-&gt;count()</code> loads every row into memory to count them.
+  <code>withCount('students')</code> asks the database for the number. On a list endpoint the
+  difference is large.</p>
+</div>
+
+<h2><span class="num">4</span>Eager loading re-applies global scopes</h2>
+
+<p>Each eager-loaded relation is its <strong>own query</strong> against its own model, so it
+re-applies that model's global scopes — including <code>TenantScope</code> and
+<code>TermScope</code>. A correctly scoped parent does nothing for it.</p>
+
+<p><strong>Symptom:</strong> blank columns on rows that plainly have data. No error.</p>
+
+<p><strong>Fix</strong> (Ethaaf's <code>crossTenant()</code>):</p>
+
+<pre><code>$query-&gt;withoutGlobalScopes([StanclTenantScope::class, TermScope::class]);</code></pre>
+
+<p>Safe <em>only</em> because the parent query is already the authorisation boundary — relations
+are reached by foreign key from rows that passed the check.</p>
+
+<div class="callout hazard">
+  <span class="label">Carried from Reference 03</span>
+  <p>Scopes come off <strong>by class name</strong>. Never bare
+  <code>withoutGlobalScopes()</code>. And <strong>fail closed</strong>: an empty filter list must
+  match nothing (<code>$ids ?: ['__none__']</code>), never everything.</p>
+</div>
+
+<h2><span class="num">5</span>Finding N+1 in Ethaaf</h2>
+
+<table>
+  <thead><tr><th style="width:44%">Tool</th><th>Shows</th></tr></thead>
+  <tbody>
+    <tr><td><code>/telescope</code> → Queries</td><td>Every query a request ran — count them</td></tr>
+    <tr><td><code>LazyLoadingViolationException</code></td><td>Thrown locally; names model + relation</td></tr>
+    <tr><td><code>performance-risk-report.md</code></td><td>Measured catalogue of known N+1 paths</td></tr>
+    <tr><td><code>DB::listen(...)</code> / <code>->toSql()</code></td><td>Ad-hoc query inspection</td></tr>
+  </tbody>
+</table>
+
+<p>Ethaaf's guard, in <code>AppServiceProvider::preventNPlusOneQueries()</code>: throws locally,
+logs outside production, permissive in production. It catches <em>accidental lazy loads</em>, not
+explicit queries written inside a <code>foreach</code>.</p>
+
+<h2><span class="num">6</span>Version delta — what differs outside Laravel 10</h2>
+
+<p>Ethaaf is on <strong>10.50.2</strong>. This table is for reading newer docs, blog posts and AI
+answers without being misled. Nothing here is something you write today.</p>
+
+<h3>Structure — the one that confuses most</h3>
+
+<table>
+  <thead><tr><th style="width:36%">Concern</th><th style="width:30%">Ethaaf (10)</th><th>11+</th></tr></thead>
+  <tbody>
+    <tr><td>Middleware registration</td><td><code>app/Http/Kernel.php</code></td><td><code>bootstrap/app.php</code></td></tr>
+    <tr><td>Service providers</td><td>Several in <code>app/Providers/</code></td><td><code>bootstrap/providers.php</code></td></tr>
+    <tr><td>Exception handling</td><td><code>app/Exceptions/Handler.php</code></td><td><code>bootstrap/app.php</code></td></tr>
+    <tr><td>Scheduled tasks</td><td><code>app/Console/Kernel.php</code></td><td><code>routes/console.php</code></td></tr>
+    <tr><td>Config files</td><td>All published</td><td>Slimmed</td></tr>
+    <tr><td>PHP required</td><td>8.1 – 8.3</td><td>8.2+ (13 needs 8.3+)</td></tr>
+  </tbody>
+</table>
+
+<div class="callout note">
+  <span class="label">The skeleton is opt-in, not forced</span>
+  <p>Laravel's own upgrade guide: <em>"we do <strong>not recommend</strong> that Laravel 10
+  applications upgrading to Laravel 11 attempt to migrate their application structure, as Laravel
+  11 has been carefully tuned to also support the Laravel 10 application structure."</em>
+  Estimated upgrade time: <strong>15 minutes</strong>. The structure is a new-app default, not a
+  migration requirement.</p>
+</div>
+
+<h3>Genuine upgrade hazards, 10 → 11</h3>
+
+<table>
+  <thead><tr><th style="width:20%">Impact</th><th style="width:30%">Change</th><th>Why it bites</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><span class="impact high">High</span></td>
+      <td><code>-&gt;change()</code> on columns</td>
+      <td>Drops any modifier not re-stated — <code>unsigned</code>, <code>default</code>, <code>comment</code> silently lost</td>
+    </tr>
+    <tr>
+      <td><span class="impact high">High</span></td>
+      <td><code>float</code> / <code>double</code> types</td>
+      <td>Rewritten; <code>$total</code>/<code>$places</code> args removed</td>
+    </tr>
+    <tr>
+      <td><span class="impact high">High</span></td>
+      <td>Sanctum 3 → 4</td>
+      <td>Ethaaf is on <code>^3.2</code>; migrations must be published, middleware config rewritten</td>
+    </tr>
+    <tr>
+      <td><span class="impact high">High</span></td>
+      <td>Telescope 4 → 5</td>
+      <td>Ethaaf already on <code>^5.0</code> — satisfied</td>
+    </tr>
+    <tr>
+      <td><span class="impact med">Med</span></td>
+      <td>Carbon 3</td>
+      <td><code>diffIn*</code> returns floats and can be negative</td>
+    </tr>
+    <tr>
+      <td><span class="impact med">Med</span></td>
+      <td>Per-second rate limiting</td>
+      <td><code>Limit</code> constructor takes seconds, not minutes</td>
+    </tr>
+    <tr>
+      <td><span class="impact low">Low</span></td>
+      <td>Eloquent <code>casts()</code> method</td>
+      <td>Conflicts with a relation literally named <code>casts</code></td>
+    </tr>
+    <tr>
+      <td><span class="impact low">Low</span></td>
+      <td>Doctrine DBAL removed</td>
+      <td>Native <code>Schema::getTables()</code> etc. replace it</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>Things in 11+ docs that do not exist in Ethaaf</h3>
+
+<table>
+  <thead><tr><th style="width:46%">If a doc shows…</th><th>In Ethaaf, instead</th></tr></thead>
+  <tbody>
+    <tr><td><code>bootstrap/app.php</code> middleware</td><td><code>app/Http/Kernel.php</code></td></tr>
+    <tr><td><code>#[Middleware]</code> / <code>#[Authorize]</code> attributes</td><td><code>-&gt;middleware()</code> on the route</td></tr>
+    <tr><td><code>Route::middlewareFor()</code></td><td>Route groups</td></tr>
+    <tr><td><code>$model-&gt;toResource()</code></td><td><code>new XResource($model)</code></td></tr>
+    <tr><td><code>#[UseResource]</code> attribute</td><td>Name the Resource explicitly</td></tr>
+    <tr><td><code>casts()</code> method</td><td><code>protected $casts = [...]</code></td></tr>
+    <tr><td><code>php artisan install:api</code></td><td><code>routes/api.php</code> already exists</td></tr>
+  </tbody>
+</table>
+
+<div class="callout hazard">
+  <span class="label">Habit</span>
+  <p>Check the version selector on every docs page you open. If a feature is missing from Ethaaf,
+  suspect an 11+ feature before suspecting yourself.</p>
+</div>
+
+<div class="footer">
+  <p class="meta">
+    <strong>Reference 04</strong> · From
+    <a href="../lessons/0004-eloquent-and-the-n-plus-one-trap.html">Lesson 4</a> ·
+    <a href="0003-ethaaf-field-guide.html">← Reference 03</a> ·
+    <a href="../RESOURCES.md">RESOURCES.md</a><br>
+    Sources: <a href="https://laravel.com/docs/10.x/eloquent-relationships">10.x Eloquent
+    Relationships</a> · <a href="https://laravel.com/docs/11.x/upgrade">11.x upgrade guide</a> ·
+    Ethaaf <code>AppServiceProvider</code> and <code>performance-risk-report.md</code>.
+  </p>
+</div>
+
+</body>
+</html>
