@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 7 · The Test That Gets You Hired</title>
+<link rel="stylesheet" href="../assets/course.css">
+<link rel="stylesheet" href="../assets/quiz.css">
+<link rel="stylesheet" href="../assets/trace.css">
+<link rel="stylesheet" href="../assets/version.css">
+</head>
+<body>
+
+<header class="masthead">
+  <p class="eyebrow">Lesson 07 · Laravel 12</p>
+  <h1>The Test That Gets You Hired</h1>
+  <p class="standfirst">Most candidates at your level cannot write a test. A take-home with
+  tests is reviewed differently from one without — this is the highest-leverage lesson here.</p>
+  <p class="meta">Laravel 12 · ~35 minutes · Prerequisite: <a href="0006-auth-sanctum-and-policies.html">Lesson 6</a></p>
+</header>
+
+<div class="callout bridge">
+  <span class="label">Why this lesson matters more than the others</span>
+  <p>A take-home submission with a handful of passing feature tests reads as <em>"this person has
+  worked on a team"</em>. Without them it reads as <em>"this person has done tutorials"</em> —
+  regardless of how good the code is.</p>
+  <p>You do not need deep testing theory. You need to write <strong>one good feature test</strong>
+  and explain why it is worth having. That is a weekend's work and it moves you ahead of a lot
+  of the field.</p>
+</div>
+
+<h2><span class="num">1</span>Cold recall</h2>
+
+<div class="recall">
+  <p class="q">From Lesson 6: which layer produces 401, which produces 403, and which produces 422? Name the mechanism behind each.</p>
+  <textarea placeholder="Three codes, three mechanisms."></textarea>
+  <button class="reveal-btn">Check my answer</button>
+  <div class="recall-answer">
+    <p><strong>401</strong> — authentication. <code>auth:sanctum</code> middleware: no valid
+    token or session cookie.<br>
+    <strong>403</strong> — authorization. A policy or gate returned false.<br>
+    <strong>422</strong> — validation. Form Request <code>rules()</code> failed.</p>
+    <p>Today you write tests that assert exactly these three, which is also how you will
+    <em>remember</em> them.</p>
+  </div>
+</div>
+
+<h2><span class="num">2</span>Two kinds of test, and which to write</h2>
+
+<table>
+  <thead>
+    <tr><th style="width:22%">Kind</th><th style="width:34%">Tests</th><th>Use it when</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Feature</strong></td>
+      <td>A real HTTP request through the whole stack</td>
+      <td><strong>Almost always.</strong> Highest confidence per line written</td>
+    </tr>
+    <tr>
+      <td><strong>Unit</strong></td>
+      <td>One class or method in isolation</td>
+      <td>Tricky pure logic — a calculation, a parser</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout note">
+  <span class="label">Say this if asked "unit or integration?"</span>
+  <p>For a Laravel API, feature tests give far more confidence per unit of effort, because they
+  exercise routing, middleware, validation, the controller and the database together — the places
+  bugs actually live. Unit tests are for isolated logic worth pinning down separately.</p>
+  <p>That answer is practical rather than dogmatic, which is what experienced interviewers want
+  to hear.</p>
+</div>
+
+<h2><span class="num">3</span>A complete feature test</h2>
+
+<p class="filename">tests/Feature/ProgressTest.php</p>
+<pre><code>&lt;?php
+
+namespace Tests\Feature;
+
+use App\Models\Progress;
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Laravel\Sanctum\Sanctum;
+use Tests\TestCase;
+
+class ProgressTest extends TestCase
+{
+    use RefreshDatabase;
+
+    public function test_a_teacher_can_record_progress(): void
+    {
+        Sanctum::actingAs(User::factory()-&gt;create());
+
+        $response = $this-&gt;postJson('/api/progress', [
+            'student_id'  =&gt; 1,
+            'pages'       =&gt; 5,
+            'recorded_on' =&gt; '2026-10-18',
+        ]);
+
+        $response-&gt;assertStatus(201)
+                 -&gt;assertJsonPath('data.pages', 5);
+
+        $this-&gt;assertDatabaseHas('progress', ['pages' =&gt; 5]);
+    }
+}</code></pre>
+
+<p>Every line earns its place:</p>
+
+<div class="trace">
+  <div class="trace-step">
+    <span class="trace-label">use RefreshDatabase;</span>
+    <p>Each test runs inside a transaction that is rolled back afterwards. Tests never see each
+    other's data and never leave rows behind. <strong>Without this, tests pass alone and fail
+    together</strong> — a classic beginner symptom.</p>
+  </div>
+  <div class="trace-step">
+    <span class="trace-label">Sanctum::actingAs(User::factory()-&gt;create())</span>
+    <p>Authenticate without logging in. <code>factory()</code> builds a valid User with fake data
+    — no fixtures, no seeded database. Add abilities with a second argument:
+    <code>actingAs($user, ['view-tasks'])</code>.</p>
+  </div>
+  <div class="trace-step">
+    <span class="trace-label">$this-&gt;postJson(...)</span>
+    <p>A real request through routing, middleware, validation and the controller. Use
+    <code>getJson</code>, <code>putJson</code>, <code>deleteJson</code> likewise — the JSON
+    variants set the right headers so you get JSON errors rather than redirects.</p>
+  </div>
+  <div class="trace-step">
+    <span class="trace-label">assertStatus(201)-&gt;assertJsonPath(...)</span>
+    <p>Assert the contract: status code, then shape. <code>assertJson</code> checks a
+    <em>fragment</em> — extra keys still pass — while <code>assertExactJson</code> demands a
+    complete match.</p>
+  </div>
+  <div class="trace-step">
+    <span class="trace-label">assertDatabaseHas(...)</span>
+    <p>The response said it worked; this proves it <strong>persisted</strong>. A response can lie
+    — this is the assertion that catches a controller which returns 201 without saving.</p>
+  </div>
+</div>
+
+<h2><span class="num">4</span>The four tests worth writing</h2>
+
+<p>For any endpoint, these four cover the ground an interviewer cares about:</p>
+
+<pre><code>public function test_it_requires_authentication(): void
+{
+    $this-&gt;postJson('/api/progress', [])-&gt;assertStatus(401);
+}
+
+public function test_it_validates_the_payload(): void
+{
+    Sanctum::actingAs(User::factory()-&gt;create());
+
+    $this-&gt;postJson('/api/progress', ['pages' =&gt; 'not-a-number'])
+         -&gt;assertStatus(422)
+         -&gt;assertJsonValidationErrors(['pages', 'student_id', 'recorded_on']);
+}
+
+public function test_it_forbids_editing_another_users_record(): void
+{
+    Sanctum::actingAs(User::factory()-&gt;create());
+    $other = Progress::factory()-&gt;create();   // belongs to someone else
+
+    $this-&gt;putJson("/api/progress/{$other-&gt;id}", ['pages' =&gt; 9])
+         -&gt;assertStatus(403);
+}
+
+public function test_it_returns_404_for_a_missing_record(): void
+{
+    Sanctum::actingAs(User::factory()-&gt;create());
+
+    $this-&gt;getJson('/api/progress/99999')-&gt;assertStatus(404);
+}</code></pre>
+
+<div class="callout hazard">
+  <span class="label">Test the unhappy paths — that is the signal</span>
+  <p>Beginners test that things work. Experienced developers test that things <strong>fail
+  correctly</strong>. Those four tests prove your auth, validation, authorization and binding all
+  behave — which is precisely what a reviewer wants to know, and precisely what a tutorial
+  follower never writes.</p>
+  <p>Note <code>assertJsonValidationErrors</code>: it asserts specific fields failed, so the test
+  still catches a regression if you later change the error wording.</p>
+</div>
+
+<h2><span class="num">5</span>Factories</h2>
+
+<p>Tests need data. Factories generate it (<code>database/factories/</code>):</p>
+
+<pre><code>class ProgressFactory extends Factory
+{
+    public function definition(): array
+    {
+        return [
+            'student_id'  =&gt; Student::factory(),
+            'pages'       =&gt; fake()-&gt;numberBetween(1, 20),
+            'recorded_on' =&gt; fake()-&gt;date(),
+        ];
+    }
+}</code></pre>
+
+<pre><code>Progress::factory()-&gt;create();                      // one, saved
+Progress::factory()-&gt;count(10)-&gt;create();           // ten
+Progress::factory()-&gt;create(['pages' =&gt; 5]);        // override a field
+Progress::factory()-&gt;make();                        // built, NOT saved</code></pre>
+
+<p><code>'student_id' =&gt; Student::factory()</code> creates the parent automatically — nested
+factories mean a test needs one line to produce a whole valid object graph.</p>
+
+<h2><span class="num">6</span>Running them</h2>
+
+<pre><code>php artisan test                              # all
+php artisan test --filter=ProgressTest        # one class
+php artisan test tests/Feature/ProgressTest.php
+php artisan test --parallel                   # faster
+</code></pre>
+
+<p>Ethaaf uses <code>./vendor/bin/phpunit</code> with Unit, Feature and
+<strong>Architecture</strong> suites. That third one enforces structural rules — "controllers must
+not call the database directly", for instance. Mentioning you have seen architecture tests is a
+small, credible differentiator.</p>
+
+<h2><span class="num">7</span>Retrieval practice</h2>
+
+<div class="quiz"
+     data-answer="a"
+     data-why="RefreshDatabase wraps each test in a transaction and rolls it back, so tests never pollute each other or leave data behind."
+     data-hintB="It does not speed tests up; the isolation is the point."
+     data-hintC="Migrations are not re-run from scratch for every single test method."
+     data-hintD="It has nothing to do with seeding reference data.">
+  <p class="q">What does the <code>RefreshDatabase</code> trait give you?</p>
+  <div class="opts">
+    <button class="opt" data-opt="a">Each test is isolated and rolled back after</button>
+    <button class="opt" data-opt="b">Each test runs faster by caching the queries</button>
+    <button class="opt" data-opt="c">Each test rebuilds the schema from migrations</button>
+    <button class="opt" data-opt="d">Each test receives a freshly seeded data set</button>
+  </div>
+  <div class="feedback"></div>
+</div>
+
+<div class="quiz"
+     data-answer="d"
+     data-why="A response can report success without persisting anything. assertDatabaseHas proves the row actually exists."
+     data-hintA="Both assertions are cheap; cost is not the reason for having both."
+     data-hintB="Status codes are asserted separately, and they do not prove persistence."
+     data-hintC="It does not check the JSON at all \u2014 it queries the database directly.">
+  <p class="q">Why add <code>assertDatabaseHas</code> when you already asserted a 201?</p>
+  <div class="opts">
+    <button class="opt" data-opt="a">Because asserting on JSON is slow to execute</button>
+    <button class="opt" data-opt="b">Because it checks the status code more firmly</button>
+    <button class="opt" data-opt="c">Because it validates the JSON response shape</button>
+    <button class="opt" data-opt="d">Because a 201 does not prove the row was saved</button>
+  </div>
+  <div class="feedback"></div>
+</div>
+
+<div class="quiz"
+     data-answer="b"
+     data-why="Feature tests exercise routing, middleware, validation, controller and database together — the places bugs actually occur in a web API."
+     data-hintA="Unit tests are usually faster, so speed is not the argument for feature tests."
+     data-hintC="Feature tests generally need the database rather than avoiding it."
+     data-hintD="They are not simpler to write \u2014 they are simply worth more per test.">
+  <p class="q">For a Laravel API, why do feature tests usually beat unit tests?</p>
+  <div class="opts">
+    <button class="opt" data-opt="a">They run faster than unit tests normally do</button>
+    <button class="opt" data-opt="b">They cover the whole stack where bugs live</button>
+    <button class="opt" data-opt="c">They avoid touching the database altogether</button>
+    <button class="opt" data-opt="d">They are much simpler to write than units</button>
+  </div>
+  <div class="feedback"></div>
+</div>
+
+<div class="recall">
+  <p class="q"><strong>Out loud:</strong> "What would you test on an endpoint that creates a record?" Name the cases before you look.</p>
+  <textarea placeholder="List the cases you would write, and say why each one earns its place."></textarea>
+  <button class="reveal-btn">Check my answer</button>
+  <div class="recall-answer">
+    <p><strong>Happy path</strong> — valid payload, authenticated user → 201, correct JSON,
+    <code>assertDatabaseHas</code>.<br>
+    <strong>Unauthenticated</strong> → 401.<br>
+    <strong>Invalid payload</strong> → 422 with <code>assertJsonValidationErrors</code>.<br>
+    <strong>Forbidden</strong> — authenticated but not permitted → 403.<br>
+    <strong>Missing related record</strong> → 404.</p>
+    <p>Then, if the endpoint has them: edge cases around boundaries (zero, maximum, past dates)
+    and any business rule the Form Request enforces.</p>
+    <p>Saying <em>"I'd test the failure paths, not just the happy path"</em> is the sentence that
+    makes a reviewer relax.</p>
+  </div>
+</div>
+
+<h2><span class="num">8</span>Version shift</h2>
+
+<aside class="vshift">
+  <span class="vlabel">12 ← 10 · Ethaaf</span>
+  <p>Everything here works in Laravel 10. The differences are cosmetic: Laravel 11+ ships
+  <strong>Pest</strong> as the default test runner (docs show both Pest and PHPUnit tabs), while
+  Ethaaf uses classic PHPUnit classes. Pest's <code>test('name', function () { … })</code> is the
+  same engine with different syntax — read either comfortably.</p>
+</aside>
+
+<h2><span class="num">9</span>Your task before Lesson 8</h2>
+
+<p><strong>One — write four tests.</strong> In your practice app, write exactly the four from
+section 4 against the endpoint you built in Lessons 5–6. Watch them fail first (comment out the
+middleware, see the 401 test break), then pass. <strong>Seeing a test fail for the right reason
+is how you learn to trust it.</strong></p>
+
+<p><strong>Two — read one of Ethaaf's.</strong> Open any file in
+<code>C:/laragon/www/ethaaf/tests/Feature/</code> and read it. Production tests are messier than
+tutorial ones; getting used to that is valuable.</p>
+
+<p><strong>Three — out loud.</strong> "Do you write tests? What do you test?" in under a minute.
+This question is nearly certain to come up.</p>
+
+<div class="source">
+  <span class="label">Primary source — read this next</span>
+  <p><a href="https://laravel.com/docs/12.x/http-tests#testing-json-apis">Laravel 12.x — Testing
+  JSON APIs</a>, then skim
+  <a href="https://laravel.com/docs/12.x/http-tests#available-assertions">Available Assertions</a>
+  — know what exists, look up the names later.</p>
+  <p>Then: <a href="https://laravel.com/docs/12.x/eloquent-factories">Eloquent Factories</a>.</p>
+</div>
+
+<div class="ask-teacher">
+  <span class="label">Ask your teacher</span>
+  <p>Try: <em>"Here's my endpoint — what should I test?"</em> ·
+  <em>"My test fails with [error], why?"</em> ·
+  <em>"Explain this Ethaaf test to me."</em> ·
+  <em>"How do I test something that sends an email or calls an API?"</em> (the answer is fakes —
+  worth knowing) · <em>"Grade my answer to 'do you write tests?'"</em></p>
+</div>
+
+<div class="footer">
+  <p class="meta">
+    <strong>Lesson 7 of 10</strong> · Next: Eloquent II — query building, scopes and transactions.<br>
+    <a href="0006-auth-sanctum-and-policies.html">← Lesson 6</a> ·
+    <a href="0008-eloquent-queries-and-transactions.html">Lesson 8 →</a> ·
+    <a href="../reference/0006-auth-reference.html">Auth reference</a> ·
+    <a href="../MISSION.md">MISSION.md</a>
+  </p>
+</div>
+
+<script src="../assets/quiz.js"></script>
+</body>
+</html>

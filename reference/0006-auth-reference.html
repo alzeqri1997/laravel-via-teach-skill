@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reference 06 · Auth &amp; Testing</title>
+<link rel="stylesheet" href="../assets/course.css">
+<link rel="stylesheet" href="../assets/trace.css">
+<link rel="stylesheet" href="../assets/version.css">
+</head>
+<body>
+
+<header class="masthead">
+  <p class="eyebrow">Reference 06 · Laravel 12</p>
+  <h1>Auth &amp; Testing</h1>
+  <p class="standfirst">Sanctum, policies, and the feature-test patterns worth memorising —
+  with the assertions and status codes on one page.</p>
+  <p class="meta">Laravel 12 · verified against the docs 2026-10-18 · print this one</p>
+</header>
+
+<h2><span class="num">1</span>The two questions</h2>
+
+<table>
+  <thead><tr><th style="width:26%">Question</th><th style="width:26%">Mechanism</th><th>Failure</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Who are you?</strong></td><td>Sanctum, <code>auth:sanctum</code></td><td><strong>401</strong></td></tr>
+    <tr><td><strong>May you?</strong></td><td>Policies, gates</td><td><strong>403</strong></td></tr>
+    <tr><td><strong>Is the data ok?</strong></td><td>Form Request <code>rules()</code></td><td><strong>422</strong></td></tr>
+    <tr><td><strong>Does it exist?</strong></td><td>Route model binding</td><td><strong>404</strong></td></tr>
+  </tbody>
+</table>
+
+<h2><span class="num">2</span>Sanctum's two modes</h2>
+
+<table>
+  <thead><tr><th style="width:26%">Mode</th><th style="width:30%">For</th><th>Mechanism</th></tr></thead>
+  <tbody>
+    <tr><td>API tokens</td><td>Mobile, third-party, scripts</td><td><code>Authorization: Bearer …</code></td></tr>
+    <tr><td>SPA auth</td><td><strong>Your own frontend</strong></td><td>Session cookies + CSRF</td></tr>
+  </tbody>
+</table>
+
+<p>Docs: <em>"You should not use API tokens to authenticate your own first-party SPA."</em>
+Cookies give CSRF protection and keep credentials out of JavaScript (XSS).</p>
+
+<h3>Token operations</h3>
+
+<pre><code>// Issue
+$user-&gt;createToken('device-name')-&gt;plainTextToken;          // plain text ONCE
+$user-&gt;createToken('name', ['server:update'])-&gt;plainTextToken;  // with abilities
+
+// Check an ability
+$user-&gt;tokenCan('server:update');
+
+// Revoke
+$user-&gt;tokens()-&gt;delete();                           // all
+$request-&gt;user()-&gt;currentAccessToken()-&gt;delete();    // this one = logout
+$user-&gt;tokens()-&gt;where('id', $id)-&gt;delete();         // specific
+
+// Protect
+Route::get('/user', fn (Request $r) =&gt; $r-&gt;user())-&gt;middleware('auth:sanctum');</code></pre>
+
+<p>Requires <code>use Laravel\Sanctum\HasApiTokens;</code> on the User model. Tokens are stored
+SHA-256 hashed and never expire unless <code>config/sanctum.php</code>'s
+<code>expiration</code> is set.</p>
+
+<h2><span class="num">3</span>Policies</h2>
+
+<pre><code>php artisan make:policy ProgressPolicy --model=Progress</code></pre>
+
+<pre><code>class ProgressPolicy
+{
+    public function before(User $user, string $ability): bool|null
+    {
+        return $user-&gt;isAdministrator() ? true : null;   // null = fall through
+    }
+
+    public function viewAny(User $user): bool { … }       // no model
+    public function view(User $user, Progress $p): bool { … }
+    public function create(User $user): bool { … }        // no model
+    public function update(User $user, Progress $p): bool { … }
+    public function delete(User $user, Progress $p): bool { … }
+}</code></pre>
+
+<p><strong>Auto-discovered</strong> — <code>Progress</code> → <code>ProgressPolicy</code> in
+<code>app/Policies/</code>. No registration.</p>
+
+<table>
+  <thead><tr><th style="width:52%">Invoking it</th><th>Behaviour</th></tr></thead>
+  <tbody>
+    <tr><td><code>Gate::authorize('update', $p)</code></td><td>Throws → 403</td></tr>
+    <tr><td><code>$user-&gt;can('update', $p)</code></td><td>Boolean</td></tr>
+    <tr><td><code>$user-&gt;can('create', Progress::class)</code></td><td>Boolean, no instance</td></tr>
+    <tr><td><code>-&gt;can('update', 'progress')</code> on a route</td><td>Middleware → 403</td></tr>
+    <tr><td>In a Form Request's <code>authorize()</code></td><td>→ 403</td></tr>
+  </tbody>
+</table>
+
+<p><strong>Gates vs policies:</strong> policies group rules around a model; gates are standalone
+closures for model-less abilities (viewing an admin dashboard). Define gates in
+<code>AppServiceProvider::boot()</code> with <code>Gate::define(...)</code>.</p>
+
+<div class="callout note">
+  <span class="label">Useful detail</span>
+  <p><code>Response::denyAsNotFound()</code> returns 404 instead of 403 — hides a record's
+  existence from someone not allowed to see it.</p>
+</div>
+
+<h2><span class="num">4</span>Feature test skeleton</h2>
+
+<pre><code>class ProgressTest extends TestCase
+{
+    use RefreshDatabase;
+
+    public function test_a_teacher_can_record_progress(): void
+    {
+        Sanctum::actingAs(User::factory()-&gt;create());
+
+        $this-&gt;postJson('/api/progress', ['pages' =&gt; 5])
+             -&gt;assertStatus(201)
+             -&gt;assertJsonPath('data.pages', 5);
+
+        $this-&gt;assertDatabaseHas('progress', ['pages' =&gt; 5]);
+    }
+}</code></pre>
+
+<h3>The four to always write</h3>
+
+<table>
+  <thead><tr><th style="width:38%">Case</th><th>Assert</th></tr></thead>
+  <tbody>
+    <tr><td>Happy path</td><td>201 + <code>assertDatabaseHas</code></td></tr>
+    <tr><td>No token</td><td>401</td></tr>
+    <tr><td>Bad payload</td><td>422 + <code>assertJsonValidationErrors([...])</code></td></tr>
+    <tr><td>Wrong user</td><td>403</td></tr>
+    <tr><td><em>(bonus)</em> Missing record</td><td>404</td></tr>
+  </tbody>
+</table>
+
+<h3>Assertions</h3>
+
+<table>
+  <thead><tr><th style="width:46%">Assertion</th><th>Checks</th></tr></thead>
+  <tbody>
+    <tr><td><code>assertStatus(201)</code> / <code>assertOk()</code> / <code>assertCreated()</code></td><td>Status code</td></tr>
+    <tr><td><code>assertJson([...])</code></td><td>Fragment present (extra keys pass)</td></tr>
+    <tr><td><code>assertExactJson([...])</code></td><td>Exact match</td></tr>
+    <tr><td><code>assertJsonPath('data.pages', 5)</code></td><td>One value by path</td></tr>
+    <tr><td><code>assertJsonCount(3, 'data')</code></td><td>Array length</td></tr>
+    <tr><td><code>assertJsonValidationErrors(['pages'])</code></td><td>Those fields failed</td></tr>
+    <tr><td><code>assertDatabaseHas('t', [...])</code></td><td>Row exists</td></tr>
+    <tr><td><code>assertDatabaseMissing('t', [...])</code></td><td>Row absent (deletes)</td></tr>
+    <tr><td><code>assertSoftDeleted($model)</code></td><td>Soft-deleted</td></tr>
+  </tbody>
+</table>
+
+<h3>Helpers</h3>
+
+<table>
+  <thead><tr><th style="width:46%">Call</th><th>Does</th></tr></thead>
+  <tbody>
+    <tr><td><code>use RefreshDatabase;</code></td><td>Transaction per test, rolled back</td></tr>
+    <tr><td><code>Sanctum::actingAs($user)</code></td><td>Authenticate (add <code>['ability']</code> second)</td></tr>
+    <tr><td><code>$this-&gt;actingAs($user)</code></td><td>Session auth</td></tr>
+    <tr><td><code>X::factory()-&gt;create()</code></td><td>Saved model</td></tr>
+    <tr><td><code>X::factory()-&gt;count(10)-&gt;create()</code></td><td>Ten</td></tr>
+    <tr><td><code>X::factory()-&gt;make()</code></td><td>Unsaved</td></tr>
+    <tr><td><code>$response-&gt;dump()</code></td><td>Print the response while debugging</td></tr>
+  </tbody>
+</table>
+
+<pre><code>php artisan test                          # all
+php artisan test --filter=ProgressTest    # one class
+php artisan test --parallel               # faster</code></pre>
+
+<h2><span class="num">5</span>Interview answers</h2>
+
+<div class="trace">
+  <div class="trace-step">
+    <span class="trace-label">"401 vs 403?"</span>
+    <p>401 — we don't know who you are; log in. 403 — we know, and you still may not.</p>
+  </div>
+  <div class="trace-step">
+    <span class="trace-label">"How do you log out of a token API?"</span>
+    <p>Delete the token: <code>currentAccessToken()-&gt;delete()</code>. There is no session.</p>
+  </div>
+  <div class="trace-step">
+    <span class="trace-label">"Tokens or cookies for your SPA?"</span>
+    <p>Cookies — CSRF protection, and no token sitting in JavaScript for XSS to steal.</p>
+  </div>
+  <div class="trace-step">
+    <span class="trace-label">"Do you write tests?"</span>
+    <p>Feature tests covering the whole stack: happy path plus 401, 403, 422, 404.
+    <code>RefreshDatabase</code> for isolation, factories for data. "I test the failure paths."</p>
+  </div>
+</div>
+
+<h2><span class="num">6</span>Version notes</h2>
+
+<aside class="vshift">
+  <span class="vlabel">12 ← 10 · Ethaaf</span>
+  <p>Concepts identical. Ethaaf uses <strong>Sanctum 3.x</strong> (Laravel 11+ requires 4.x — a
+  high-impact upgrade), has no <code>install:api</code> command, and uses PHPUnit classes rather
+  than Pest. It also layers <code>spatie/laravel-permission</code> on top for named permissions.</p>
+</aside>
+
+<aside class="vshift">
+  <span class="vlabel">12 → 13</span>
+  <p>Laravel 13 adds an <code>#[Authorize]</code> controller attribute. In 12, use
+  <code>Gate::authorize()</code> or <code>-&gt;can()</code> on the route.</p>
+</aside>
+
+<div class="footer">
+  <p class="meta">
+    <strong>Reference 06</strong> · From
+    <a href="../lessons/0006-auth-sanctum-and-policies.html">Lesson 6</a> and
+    <a href="../lessons/0007-testing-your-endpoint.html">Lesson 7</a> ·
+    <a href="0005-building-an-endpoint.html">← Reference 05</a><br>
+    Sources: <a href="https://laravel.com/docs/12.x/sanctum">12.x Sanctum</a> ·
+    <a href="https://laravel.com/docs/12.x/authorization">Authorization</a> ·
+    <a href="https://laravel.com/docs/12.x/http-tests">HTTP Tests</a>.
+  </p>
+</div>
+
+</body>
+</html>

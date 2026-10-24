@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 6 · Who Are You, and May You?</title>
+<link rel="stylesheet" href="../assets/course.css">
+<link rel="stylesheet" href="../assets/quiz.css">
+<link rel="stylesheet" href="../assets/trace.css">
+<link rel="stylesheet" href="../assets/version.css">
+</head>
+<body>
+
+<header class="masthead">
+  <p class="eyebrow">Lesson 06 · Laravel 12</p>
+  <h1>Who Are You, and May You?</h1>
+  <p class="standfirst">Two different questions, two different mechanisms, two different status
+  codes. Confusing them is the most common auth mistake — and a favourite interview probe.</p>
+  <p class="meta">Laravel 12 · ~30 minutes · Prerequisite: <a href="0005-building-an-endpoint-from-blank.html">Lesson 5</a></p>
+</header>
+
+<div class="callout bridge">
+  <span class="label">The distinction the whole lesson rests on</span>
+  <p><strong>Authentication</strong> asks <em>"who are you?"</em> — it is Sanctum, tokens, and
+  the <code>auth:sanctum</code> middleware. Failure is <strong>401</strong>.</p>
+  <p><strong>Authorization</strong> asks <em>"may you do this?"</em> — it is policies and gates.
+  Failure is <strong>403</strong>.</p>
+  <p>If an interviewer asks you one thing about auth, it will be this. Being crisp about it
+  signals you have shipped real APIs.</p>
+</div>
+
+<h2><span class="num">1</span>Cold recall</h2>
+
+<div class="recall">
+  <p class="q">From Lesson 5: name the five artisan commands for a new endpoint, in order. Then — which produces a 422, and why?</p>
+  <textarea placeholder="Five commands in order, then the 422 question."></textarea>
+  <button class="reveal-btn">Check my answer</button>
+  <div class="recall-answer">
+    <p><code>make:migration</code> → <code>make:model</code> → <code>make:request</code> →
+    <code>make:controller --api</code> → <code>make:resource</code>, then the route.</p>
+    <p><strong>422</strong> comes from the <strong>Form Request</strong> — specifically
+    <code>rules()</code> failing. Laravel converts the validation exception into a 422 with an
+    <code>errors</code> object automatically. Today you learn what produces the 401 and the 403
+    that sit next to it.</p>
+  </div>
+</div>
+
+<h2><span class="num">2</span>Sanctum has two modes — know which you are in</h2>
+
+<p>This confuses almost everyone, because one package solves two different problems
+(<a href="https://laravel.com/docs/12.x/sanctum#how-it-works">docs</a>):</p>
+
+<table>
+  <thead>
+    <tr><th style="width:24%">Mode</th><th style="width:30%">Used by</th><th>Mechanism</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>API tokens</strong></td>
+      <td>Mobile apps, third parties, scripts</td>
+      <td><code>Authorization: Bearer &lt;token&gt;</code> header</td>
+    </tr>
+    <tr>
+      <td><strong>SPA auth</strong></td>
+      <td>Your own first-party frontend</td>
+      <td><strong>Session cookies</strong> — no tokens at all</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout hazard">
+  <span class="label">The thing most candidates get wrong</span>
+  <p>For your <em>own</em> SPA, Laravel's docs say plainly: <em>"You should not use API tokens to
+  authenticate your own first-party SPA. Instead, use Sanctum's built-in SPA authentication
+  features."</em> SPA mode uses cookies, which gives you CSRF protection and avoids storing a
+  token in JavaScript where XSS can steal it.</p>
+  <p>Saying this in an interview — <strong>"cookies for first-party, tokens for third-party, and
+  here's the XSS reason why"</strong> — puts you ahead of most candidates, who assume tokens are
+  always the answer.</p>
+</div>
+
+<p>The same guard handles both. Sanctum checks for a session cookie first, then falls back to the
+<code>Authorization</code> header:</p>
+
+<pre><code>Route::get('/user', function (Request $request) {
+    return $request-&gt;user();
+})-&gt;middleware('auth:sanctum');</code></pre>
+
+<h2><span class="num">3</span>Issuing a token</h2>
+
+<p>The login endpoint, essentially verbatim from the docs — this is a realistic take-home answer:</p>
+
+<pre><code>Route::post('/sanctum/token', function (Request $request) {
+    $request-&gt;validate([
+        'email'       =&gt; 'required|email',
+        'password'    =&gt; 'required',
+        'device_name' =&gt; 'required',
+    ]);
+
+    $user = User::where('email', $request-&gt;email)-&gt;first();
+
+    if (! $user || ! Hash::check($request-&gt;password, $user-&gt;password)) {
+        throw ValidationException::withMessages([
+            'email' =&gt; ['The provided credentials are incorrect.'],
+        ]);
+    }
+
+    return $user-&gt;createToken($request-&gt;device_name)-&gt;plainTextToken;
+});</code></pre>
+
+<div class="trace">
+  <div class="trace-step">
+    <span class="trace-label">Hash::check($plain, $hashed)</span>
+    <p>Passwords are <strong>never</strong> compared directly or decrypted — they are hashed
+    one-way and verified. <code>Hash::check</code> is also timing-safe. If you ever see
+    <code>$user-&gt;password === $request-&gt;password</code>, that is a serious bug.</p>
+  </div>
+  <div class="trace-step">
+    <span class="trace-label">! $user || ! Hash::check(...)</span>
+    <p>Both failures give the <em>same</em> message. Deliberate: saying "no such email" tells an
+    attacker which addresses are registered. <strong>Mention this in an interview</strong> —
+    it shows security instinct beyond following a tutorial.</p>
+  </div>
+  <div class="trace-step">
+    <span class="trace-label">-&gt;plainTextToken</span>
+    <p>The only moment the plain token exists. Laravel stores a SHA-256 hash, so it cannot be
+    recovered later — show it to the user once, or issue a new one.</p>
+  </div>
+</div>
+
+<h3>Abilities, and revoking</h3>
+
+<pre><code>// Scope a token to specific actions
+$user-&gt;createToken('token-name', ['server:update'])-&gt;plainTextToken;
+
+if ($user-&gt;tokenCan('server:update')) { /* … */ }
+
+// Revoke
+$user-&gt;tokens()-&gt;delete();                          // all of them
+$request-&gt;user()-&gt;currentAccessToken()-&gt;delete();   // just this one (logout)</code></pre>
+
+<p>"How do you log out of a token-based API?" — <strong>delete the token.</strong> There is no
+session to destroy. That is the answer, and it is short.</p>
+
+<h2><span class="num">4</span>Authorization: policies</h2>
+
+<p>Authentication proved who you are. It said nothing about whether you may touch
+<em>this particular record</em>. That is a policy's job
+(<a href="https://laravel.com/docs/12.x/authorization#creating-policies">docs</a>):</p>
+
+<pre><code>php artisan make:policy ProgressPolicy --model=Progress</code></pre>
+
+<pre><code>class ProgressPolicy
+{
+    public function view(User $user, Progress $progress): bool
+    {
+        return $user-&gt;id === $progress-&gt;student-&gt;teacher_id;
+    }
+
+    public function create(User $user): bool
+    {
+        return $user-&gt;role === 'teacher';
+    }
+
+    public function update(User $user, Progress $progress): bool
+    {
+        return $user-&gt;id === $progress-&gt;recorded_by;
+    }
+}</code></pre>
+
+<p>Note <code>create()</code> takes <strong>no model</strong> — there is no record yet. That
+asymmetry is a common interview follow-up.</p>
+
+<p>Policies are <strong>auto-discovered</strong>: <code>Progress</code> → <code>ProgressPolicy</code>
+in <code>app/Policies/</code>, no registration needed. Three ways to invoke one:</p>
+
+<pre><code>// 1. In the controller — throws, becomes 403
+Gate::authorize('update', $progress);
+
+// 2. As a boolean
+if ($request-&gt;user()-&gt;cannot('update', $progress)) { abort(403); }
+
+// 3. On the route — before the controller runs
+Route::put('/progress/{progress}', ...)-&gt;can('update', 'progress');</code></pre>
+
+<p>And the cleanest option, inside a Form Request — which is why Lesson 5's
+<code>authorize()</code> existed:</p>
+
+<pre><code>public function authorize(): bool
+{
+    return $this-&gt;user()-&gt;can('create', Progress::class);
+}</code></pre>
+
+<div class="callout note">
+  <span class="label">Gates vs policies — a likely follow-up</span>
+  <p><strong>Policies</strong> group rules around a <em>model</em> (can this user edit this post?).
+  <strong>Gates</strong> are standalone closures for things with no model (can this user see the
+  admin dashboard?). The docs' own analogy: <em>"Think of gates and policies like routes and
+  controllers."</em></p>
+</div>
+
+<h2><span class="num">5</span>How Ethaaf does it</h2>
+
+<p>Your worked example uses a third layer — <code>spatie/laravel-permission</code>:</p>
+
+<pre><code>Route::middleware('associationPermission:'.Permission::VIEW_STUDENTS)-&gt;group(function () {
+    Route::get('/', [StudentController::class, 'index']);
+});</code></pre>
+
+<p>So Ethaaf stacks <strong>three</strong> checks: <code>auth:sanctum</code> (who are you),
+<code>associationPermission</code> (do you hold this named permission), and tenant scoping (which
+rows may you even see). Being able to describe a layered model like that — rather than "we check
+if the user is an admin" — is a strong signal in an interview.</p>
+
+<p>Ethaaf also has a custom <code>Rule::tenantExists('sections')</code>, which is authorization
+expressed <em>as validation</em>: you cannot reference another tenant's record by guessing its id.</p>
+
+<h2><span class="num">6</span>Retrieval practice</h2>
+
+<div class="quiz"
+     data-answer="b"
+     data-why="401 means we do not know who you are. 403 means we know exactly who you are, and you still may not do this."
+     data-hintA="Reversed. Think about which one can be fixed by logging in."
+     data-hintC="These are different failures — one is identity, the other is permission."
+     data-hintD="Neither relates to the data being malformed; that failure is a 422.">
+  <p class="q">What separates a 401 response from a 403 response?</p>
+  <div class="opts">
+    <button class="opt" data-opt="a">401 means forbidden, 403 means unknown user</button>
+    <button class="opt" data-opt="b">401 means unknown user, 403 means forbidden</button>
+    <button class="opt" data-opt="c">401 and 403 both mean the login has expired</button>
+    <button class="opt" data-opt="d">401 means bad input, 403 means bad password</button>
+  </div>
+  <div class="feedback"></div>
+</div>
+
+<div class="quiz"
+     data-answer="d"
+     data-why="Cookie-based SPA auth gives CSRF protection and keeps credentials out of JavaScript, where XSS could steal a stored token."
+     data-hintA="Tokens are not meaningfully slower; the reason is a security one."
+     data-hintB="Both approaches scale fine. Think about what an attacker could steal."
+     data-hintC="Cookies are not simpler to implement — CSRF setup is extra work. The gain is elsewhere.">
+  <p class="q">Why do Laravel's docs say to use cookie-based auth, not tokens, for your own SPA?</p>
+  <div class="opts">
+    <button class="opt" data-opt="a">Because cookie sessions are faster than tokens</button>
+    <button class="opt" data-opt="b">Because tokens cannot scale to many users well</button>
+    <button class="opt" data-opt="c">Because cookies are simpler to set up correctly</button>
+    <button class="opt" data-opt="d">Because stored tokens can be stolen through XSS</button>
+  </div>
+  <div class="feedback"></div>
+</div>
+
+<div class="quiz"
+     data-answer="c"
+     data-why="The create action has no existing record to authorize against, so the policy method receives only the user."
+     data-hintA="Policies are auto-discovered by naming convention; no registration is needed."
+     data-hintB="It returns a boolean exactly like the others do."
+     data-hintD="It lives in the same policy class as every other method.">
+  <p class="q">Why does a policy's <code>create()</code> method differ from its <code>update()</code> method?</p>
+  <div class="opts">
+    <button class="opt" data-opt="a">It has to be registered manually in a provider</button>
+    <button class="opt" data-opt="b">It returns a response object, not a boolean</button>
+    <button class="opt" data-opt="c">It takes no model, since none exists yet</button>
+    <button class="opt" data-opt="d">It belongs in a gate rather than in a policy</button>
+  </div>
+  <div class="feedback"></div>
+</div>
+
+<div class="recall">
+  <p class="q"><strong>Out loud:</strong> "How would you secure an API endpoint so that a teacher can only edit progress records they created?" Speak it, then write it.</p>
+  <textarea placeholder="Say it aloud first. Name each layer and the status code it produces."></textarea>
+  <button class="reveal-btn">Check my answer</button>
+  <div class="recall-answer">
+    <p><strong>Layer 1 — authentication.</strong> <code>auth:sanctum</code> middleware on the
+    route. No valid token or session → <strong>401</strong>, before anything else runs.</p>
+    <p><strong>Layer 2 — authorization.</strong> A <code>ProgressPolicy::update()</code> returning
+    <code>$user-&gt;id === $progress-&gt;recorded_by</code>, invoked via
+    <code>Gate::authorize('update', $progress)</code> or the Form Request's
+    <code>authorize()</code>. Fails → <strong>403</strong>.</p>
+    <p><strong>Layer 3 — validation.</strong> Form Request <code>rules()</code> check the payload.
+    Fails → <strong>422</strong>.</p>
+    <p>Strong additions: route model binding gives you the <strong>404</strong> for free; and
+    authorization belongs on the <em>server</em> regardless of what the UI hides, because the UI
+    is advisory.</p>
+  </div>
+</div>
+
+<h2><span class="num">7</span>Version shift</h2>
+
+<aside class="vshift">
+  <span class="vlabel">12 ← 10 · Ethaaf</span>
+  <p>Sanctum's concepts are identical, but Ethaaf runs <strong>Sanctum 3.x</strong> while Laravel
+  11+ requires <strong>Sanctum 4.x</strong> — a high-impact upgrade step where migrations must be
+  published and the middleware config rewritten. Also: Laravel 10 had no
+  <code>php artisan install:api</code>; Sanctum was installed manually.</p>
+</aside>
+
+<aside class="vshift">
+  <span class="vlabel">12 → 13 · additions</span>
+  <p>Laravel 13 adds an <code>#[Authorize]</code> attribute you can place directly on a
+  controller method, as shorthand for the <code>can</code> middleware. In 12, use
+  <code>Gate::authorize()</code> or <code>-&gt;can()</code> on the route.</p>
+</aside>
+
+<h2><span class="num">8</span>Your task before Lesson 7</h2>
+
+<p><strong>One — secure the endpoint you built.</strong> In your practice app: add
+<code>auth:sanctum</code>, build the token-issuing route, and create a policy. Then prove all
+four codes with curl or Postman: <strong>401</strong> (no token), <strong>403</strong> (valid
+token, wrong user), <strong>422</strong> (bad payload), <strong>201</strong> (success).
+<em>Seeing all four yourself is the point.</em></p>
+
+<p><strong>Two — out loud.</strong> Answer "what's the difference between authentication and
+authorization?" in under sixty seconds. Mention 401 vs 403 without hesitating.</p>
+
+<div class="source">
+  <span class="label">Primary source — read this next</span>
+  <p><a href="https://laravel.com/docs/12.x/sanctum#how-it-works">Laravel 12.x — Sanctum: How it
+  Works</a>, then the <a href="https://laravel.com/docs/12.x/sanctum#api-token-authentication">API
+  Token Authentication</a> section. Skip SPA authentication for now unless you are building one.</p>
+  <p>Then: <a href="https://laravel.com/docs/12.x/authorization#creating-policies">Authorization —
+  Policies</a>. Read to "Policy Filters" and stop.</p>
+</div>
+
+<div class="ask-teacher">
+  <span class="label">Ask your teacher</span>
+  <p>Useful now: <em>"Walk me through the CSRF flow for SPA auth."</em> ·
+  <em>"When would I use a gate instead of a policy?"</em> ·
+  <em>"How does <code>spatie/laravel-permission</code> differ from policies?"</em> ·
+  <em>"Grade my answer: [your 401 vs 403 explanation]."</em></p>
+  <p>That last format is the most valuable thing I can do for you now — write your answer, and I
+  will tell you what an interviewer would think of it.</p>
+</div>
+
+<div class="footer">
+  <p class="meta">
+    <strong>Lesson 6 of 10</strong> · Next: testing — the single biggest differentiator between
+    candidates who have shipped and candidates who have only studied.<br>
+    <a href="0005-building-an-endpoint-from-blank.html">← Lesson 5</a> ·
+    <a href="0007-testing-your-endpoint.html">Lesson 7 →</a> ·
+    <a href="../reference/0006-auth-reference.html">Auth reference</a> ·
+    <a href="../MISSION.md">MISSION.md</a>
+  </p>
+</div>
+
+<script src="../assets/quiz.js"></script>
+</body>
+</html>

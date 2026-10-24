@@ -59,24 +59,51 @@ team-written architecture guide. Outranks any external tutorial.
 Never pitch a version before the codebase is known. Teach version-general, or ask. Two lessons
 were written against the wrong major version.
 
-## Curriculum sketch (revised 2026-10-12)
+## Curriculum: 10 lessons total (set 2026-10-18, LR-0006)
 
-1. ✅ Request lifecycle
-2. ✅ Reading an API endpoint — the four files
-3. ✅ First real trace — Ethaaf's association students endpoint + the tenancy hazard
-4. ✅ Eloquent — relationships, eager loading, **N+1**, + the first version-delta section
-5. Service/Repository pattern — **where his own code goes when he writes it**. The shift from
-   reading to writing; last stop before he can safely author something.
-6. Validation — Form Requests via the 422 payload (`MeasurementFormRequest` is a real example
-   with a `withValidator()` rule: grades must sum to 100)
-7. Tenant scoping in depth — `TenantScope`, actor scopes, central-context trap
-8. Testing — read an existing Feature test, then write one
-9. First real pull request — Pint + PHPStan + tests green
+A finite, committed plan — Ahmed asked how many lessons there would be. The answer is **10**,
+with 1–5 done and 5 remaining. Interview-readiness is the bar, not exhaustive coverage.
 
-**Candidate first ticket identified:** `performance-risk-report.md` is a backlog of measured,
-unassigned N+1 bugs. A documented fix there is close to an ideal first PR — diagnosis already
-written, mechanical local fix, improvement measurable in a number. He was asked in Lesson 4 to
-pick one and bring his reasoning.
+| # | Lesson | Status | Interview question it answers |
+|---|---|---|---|
+| 1 | Request lifecycle | ✅ | "What happens when a request hits Laravel?" |
+| 2 | Reading an API endpoint | ✅ | "How is a Laravel API structured?" |
+| 3 | First real trace (Ethaaf) + tenancy | ✅ | "Tell me about multi-tenancy" |
+| 4 | Eloquent, relationships, N+1 | ✅ | "What is the N+1 problem?" (near-guaranteed) |
+| 5 | Building an endpoint from blank | ✅ | "Walk me through adding a POST endpoint" |
+| 6 | Auth — Sanctum, policies | ✅ | "How does API auth work? 401 vs 403?" |
+| 7 | Testing — feature tests, factories | ✅ | "How do you test an endpoint?" **Biggest differentiator** |
+| 8 | Eloquent II — queries, scopes, transactions | ✅ | "How would you build this query?" |
+| 9 | Architecture — services, DI, container | ✅ | "Where does business logic belong?" |
+| 10 | Interview prep — mock Q&A, take-home strategy | ✅ | All of it, out loud |
+
+**ALL 10 LESSONS COMPLETE (2026-10-18).** The course as designed is finished. What remains is
+practice, not more lessons — see "After the course" below.
+
+**If time is short, 6 and 7 matter most.** Auth is asked in nearly every interview; tests are
+what separate candidates who have shipped from those who have only studied.
+
+## After the course — what to push for now
+
+Lessons are done; these are higher-value than any eleventh lesson:
+
+1. **Mock interview.** Offered at the end of Lesson 10 and the single most useful thing to do
+   next. Ten questions, graded. Push for this before his first real interview.
+2. **The portfolio piece.** He deferred it 2026-10-18 and I agreed to revisit at Lesson 10 —
+   **that point has arrived.** With no merged Ethaaf PR now likely, a small tested API on GitHub
+   is the only evidence a hiring manager can inspect. A halaqa-shaped app plays to his domain
+   knowledge. Raise it, do not nag.
+3. **Real artefacts.** Take-home tests, questions he fumbled, code review. Far more useful than
+   synthetic exercises now.
+4. **Queues**, if a posting demands them — deliberately cut, worth a weekend later.
+
+### Spaced repetition is now the binding constraint
+He has met every core concept once. Retention, not coverage, is what fails in interviews.
+Every future session should open with cold retrieval across lessons, not a single lesson's
+material — interleaving beats blocking for durability.
+
+**Out of scope, deliberately:** queues, broadcasting, Octane, Pennant, AI SDK, vector search,
+deployment. Real Laravel, rarely asked at this level, expensive in time.
 
 ## Session log
 
@@ -101,3 +128,18 @@ pick one and bring his reasoning.
   two of my own errors: the 11 skeleton is **opt-in** (15-min upgrade, not a rewrite), and Ethaaf
   **already enables** `preventLazyLoading`. Task set: count queries in Telescope, pick one N+1
   from the report and bring the reasoning.
+- **2026-10-18** — **Mission changed: layoff confirmed** (LR-0006). Goal is now employability,
+  not promotion. Default version switched to **Laravel 12** (not 13 — 12 is what postings run,
+  PHP 8.2+, supported to Feb 2027); Ethaaf's 10 and Laravel 13 become sidebars. He pushed back on
+  my phrase "compress the fundamentals" — **he was right**; corrected to "cut topics, never
+  understanding," now written into MISSION.md. Portfolio deferred at his request. Lesson 5
+  (building an endpoint from blank, first writing lesson, with Ethaaf's `MeasurementFormRequest`
+  as the worked example) + Reference 05 (build checklist + interview answers) shipped. **Course
+  scoped to 10 lessons** in response to his asking how many.
+- **2026-10-18 (later)** — Asked to build the remaining lessons in one go. **Shipped 6–10:**
+  auth (Sanctum's two modes, policies, 401/403), testing (feature tests, the four cases,
+  factories), Eloquent II (retrieval methods, scopes — **both** `scopeX()` and the Laravel 12
+  `#[Scope]` attribute — transactions, chunking), architecture (container, DI, **when not to
+  add layers**), and interview prep (ten questions, the honest multi-tenancy story, take-home
+  strategy, handling what you don't know). Plus Reference 06 (auth + testing). All claims
+  verified against 12.x docs; all internal links checked programmatically. **Course complete.**

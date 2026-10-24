@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reference 05 · Build Checklist &amp; Interview Answers</title>
+<link rel="stylesheet" href="../assets/course.css">
+<link rel="stylesheet" href="../assets/trace.css">
+<link rel="stylesheet" href="../assets/version.css">
+</head>
+<body>
+
+<header class="masthead">
+  <p class="eyebrow">Reference 05 · Laravel 12</p>
+  <h1>Build Checklist &amp; Interview Answers</h1>
+  <p class="standfirst">The five-file sequence for a new endpoint, the validation rules worth
+  knowing, and model answers to the questions you will actually be asked.</p>
+  <p class="meta">Laravel 12 · verified against the docs 2026-10-18 · print this one</p>
+</header>
+
+<h2><span class="num">1</span>The sequence</h2>
+
+<table>
+  <thead><tr><th style="width:6%">#</th><th style="width:44%">Command</th><th>Produces</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td><code>make:migration create_x_table</code></td><td>The table</td></tr>
+    <tr><td>2</td><td><code>make:model X</code></td><td>Fillable, casts, relationships</td></tr>
+    <tr><td>3</td><td><code>make:request StoreXRequest</code></td><td>authorize() + rules()</td></tr>
+    <tr><td>4</td><td><code>make:controller XController --api</code></td><td>5 methods, no create/edit</td></tr>
+    <tr><td>5</td><td><code>make:resource XResource</code></td><td>The JSON contract</td></tr>
+    <tr><td>6</td><td><code>Route::apiResource(...)</code></td><td>The wiring</td></tr>
+  </tbody>
+</table>
+
+<p>All at once: <code>php artisan make:model Progress -mrR</code> — migration, resource
+controller, API resource. Add <code>--requests</code> for Form Requests too.</p>
+
+<h2><span class="num">2</span>Migration column reference</h2>
+
+<table>
+  <thead><tr><th style="width:46%">Call</th><th>Gives</th></tr></thead>
+  <tbody>
+    <tr><td><code>$table-&gt;id()</code></td><td>Auto-incrementing primary key</td></tr>
+    <tr><td><code>$table-&gt;foreignId('student_id')-&gt;constrained()</code></td><td>Column + foreign key, table inferred</td></tr>
+    <tr><td><code>-&gt;cascadeOnDelete()</code></td><td>Delete children with the parent</td></tr>
+    <tr><td><code>-&gt;nullOnDelete()</code></td><td>Null the FK instead of deleting</td></tr>
+    <tr><td><code>$table-&gt;string('name', 255)</code></td><td>VARCHAR</td></tr>
+    <tr><td><code>$table-&gt;text('body')</code></td><td>TEXT</td></tr>
+    <tr><td><code>$table-&gt;unsignedSmallInteger('pages')</code></td><td>Small non-negative integer</td></tr>
+    <tr><td><code>$table-&gt;decimal('amount', 8, 2)</code></td><td>Money — never use float</td></tr>
+    <tr><td><code>$table-&gt;boolean('is_active')</code></td><td>TINYINT(1)</td></tr>
+    <tr><td><code>$table-&gt;date(...)</code> / <code>dateTime(...)</code></td><td>Date / datetime</td></tr>
+    <tr><td><code>$table-&gt;json('meta')</code></td><td>JSON column</td></tr>
+    <tr><td><code>$table-&gt;timestamps()</code></td><td>created_at + updated_at</td></tr>
+    <tr><td><code>$table-&gt;softDeletes()</code></td><td>deleted_at (with the trait on the model)</td></tr>
+    <tr><td><code>-&gt;unique()</code> / <code>-&gt;index()</code> / <code>-&gt;nullable()</code></td><td>Modifiers</td></tr>
+  </tbody>
+</table>
+
+<h2><span class="num">3</span>Validation rules worth knowing</h2>
+
+<table>
+  <thead><tr><th style="width:40%">Rule</th><th>Checks</th></tr></thead>
+  <tbody>
+    <tr><td><code>required</code> / <code>nullable</code></td><td>Present / may be null</td></tr>
+    <tr><td><code>sometimes</code></td><td>Validate only if the key is present (PATCH)</td></tr>
+    <tr><td><code>string</code>, <code>integer</code>, <code>numeric</code>, <code>boolean</code>, <code>array</code>, <code>date</code></td><td>Types</td></tr>
+    <tr><td><code>min:</code> / <code>max:</code> / <code>between:</code></td><td>Length, value, or count</td></tr>
+    <tr><td><code>exists:students,id</code></td><td>Row exists in that table</td></tr>
+    <tr><td><code>unique:posts,title</code></td><td>No duplicate</td></tr>
+    <tr><td><code>Rule::unique(X::class)-&gt;ignore($model)</code></td><td>Unique except itself — <strong>for updates</strong></td></tr>
+    <tr><td><code>confirmed</code></td><td>Matches <code>field_confirmation</code></td></tr>
+    <tr><td><code>in:a,b,c</code> / <code>Rule::enum(X::class)</code></td><td>One of a set</td></tr>
+    <tr><td><code>before_or_equal:today</code></td><td>Date bounds</td></tr>
+    <tr><td><code>elements.*.grade</code></td><td>Every array item — <code>*</code> is a wildcard</td></tr>
+    <tr><td><code>email</code>, <code>url</code>, <code>uuid</code>, <code>image</code>, <code>mimes:pdf</code></td><td>Formats</td></tr>
+  </tbody>
+</table>
+
+<p>Cross-field rules go in <code>withValidator()</code>:</p>
+
+<pre><code>public function withValidator($validator): void
+{
+    $validator-&gt;after(function ($validator) {
+        if (collect($this-&gt;input('elements', []))-&gt;sum('grade') != 100) {
+            $validator-&gt;errors()-&gt;add('elements', 'Grades must total 100.');
+        }
+    });
+}</code></pre>
+
+<h2><span class="num">4</span>Status codes</h2>
+
+<table>
+  <thead><tr><th style="width:16%">Code</th><th style="width:30%">Means</th><th>Triggered by</th></tr></thead>
+  <tbody>
+    <tr><td><strong>200</strong></td><td>OK</td><td>Successful GET / PUT</td></tr>
+    <tr><td><strong>201</strong></td><td>Created</td><td>Returning a Resource from <code>store</code></td></tr>
+    <tr><td><strong>204</strong></td><td>No content</td><td><code>destroy</code> returning nothing</td></tr>
+    <tr><td><strong>401</strong></td><td>Unauthenticated</td><td>Missing/invalid token — <code>auth</code> middleware</td></tr>
+    <tr><td><strong>403</strong></td><td>Forbidden</td><td><code>authorize()</code> returned false; a failed policy</td></tr>
+    <tr><td><strong>404</strong></td><td>Not found</td><td>Route model binding found no row</td></tr>
+    <tr><td><strong>422</strong></td><td>Unprocessable</td><td><strong>Validation failed</strong></td></tr>
+    <tr><td><strong>429</strong></td><td>Too many requests</td><td>Rate limiter</td></tr>
+  </tbody>
+</table>
+
+<p>401 vs 403 is a classic interview question: <strong>401 = we do not know who you are;
+403 = we know, and you may not.</strong></p>
+
+<h2><span class="num">5</span>Interview answers</h2>
+
+<div class="trace">
+  <div class="trace-step">
+    <span class="trace-label">"Walk me through adding a POST endpoint."</span>
+    <p>Migration → model (fillable, casts, relationships) → Form Request (authorize + rules) →
+    thin controller (validated in, Resource out) → Resource → route behind auth middleware.
+    <strong>Add:</strong> validation failures return 422 automatically; <code>$fillable</code>
+    guards mass assignment; eager load whatever the Resource touches.</p>
+  </div>
+  <div class="trace-step">
+    <span class="trace-label">"What is the N+1 problem?"</span>
+    <p>Accessing a relationship as a property runs a query, so a loop over N rows runs N extra
+    queries. Fix with <code>with()</code> to eager load, or <code>withCount()</code> for counts
+    only. <strong>Add:</strong> <code>Model::preventLazyLoading()</code> turns accidental lazy
+    loads into exceptions in development.</p>
+  </div>
+  <div class="trace-step">
+    <span class="trace-label">"Why validate on the server when the frontend already does?"</span>
+    <p>The client is advisory; anyone can bypass it with devtools or curl. The server is
+    authoritative — the only place a rule is actually enforced. Frontend validation is UX;
+    backend validation is correctness and security.</p>
+  </div>
+  <div class="trace-step">
+    <span class="trace-label">"What does middleware do?"</span>
+    <p>Runs before (and optionally after) the controller, and can reject the request outright —
+    auth, rate limiting, CSRF, tenant resolution. <strong>Add:</strong> it is why controllers can
+    assume a valid user exists.</p>
+  </div>
+  <div class="trace-step">
+    <span class="trace-label">"Explain route model binding."</span>
+    <p>A type-hinted Eloquent parameter whose name matches the URI segment is resolved from the
+    database automatically; no match returns 404 before the method runs. Customise the column
+    with <code>{post:slug}</code>.</p>
+  </div>
+  <div class="trace-step">
+    <span class="trace-label">"Service layer — why bother?"</span>
+    <p>Keeps business logic out of controllers so it is reusable (HTTP, CLI, queue) and testable
+    without HTTP. <strong>Honest caveat worth voicing:</strong> it is overkill for simple CRUD;
+    it earns its place when logic is shared or complex.</p>
+  </div>
+  <div class="trace-step">
+    <span class="trace-label">"Tell me about multi-tenancy." <em>(your differentiator)</em></span>
+    <p>Say what is true: you have <strong>read</strong> a production single-database
+    implementation — one database, a <code>tenant_id</code> column, a global scope appending the
+    filter automatically. Name the real hazard: the scope is a <strong>no-op outside tenant
+    context</strong>, so a queue job or admin panel can silently read every tenant's rows. Do not
+    claim to have built one; the follow-ups will find the edge.</p>
+  </div>
+</div>
+
+<h2><span class="num">6</span>Version quick-check</h2>
+
+<table>
+  <thead><tr><th style="width:26%">Version</th><th style="width:20%">PHP</th><th>Status</th></tr></thead>
+  <tbody>
+    <tr><td>10 — Ethaaf</td><td>8.1–8.3</td><td><span class="impact high">EOL</span> security ended Feb 2025</td></tr>
+    <tr><td>11</td><td>8.2–8.4</td><td><span class="impact med">Security only</span></td></tr>
+    <tr><td><strong>12 — our default</strong></td><td>8.2–8.5</td><td><span class="impact low">Supported to Feb 2027</span></td></tr>
+    <tr><td>13</td><td>8.3–8.5</td><td><span class="impact low">Current, Mar 2026</span></td></tr>
+  </tbody>
+</table>
+
+<aside class="vshift">
+  <span class="vlabel">The one difference that trips people</span>
+  <p>Middleware and exception handling live in <code>app/Http/Kernel.php</code> in Laravel 10,
+  but in <code>bootstrap/app.php</code> from 11 onward. If a tutorial references a file you do
+  not have, check the version first.</p>
+</aside>
+
+<div class="footer">
+  <p class="meta">
+    <strong>Reference 05</strong> · From
+    <a href="../lessons/0005-building-an-endpoint-from-blank.html">Lesson 5</a> ·
+    <a href="0004-eloquent-and-versions.html">← Reference 04</a> ·
+    <a href="../RESOURCES.md">RESOURCES.md</a><br>
+    Sources: <a href="https://laravel.com/docs/12.x/validation">12.x Validation</a> ·
+    <a href="https://laravel.com/docs/12.x/migrations">12.x Migrations</a> ·
+    <a href="https://laravel.com/docs/13.x/releases#support-policy">support policy</a>.
+  </p>
+</div>
+
+</body>
+</html>

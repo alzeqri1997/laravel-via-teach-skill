@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 5 · Building an Endpoint From Blank</title>
+<link rel="stylesheet" href="../assets/course.css">
+<link rel="stylesheet" href="../assets/quiz.css">
+<link rel="stylesheet" href="../assets/trace.css">
+<link rel="stylesheet" href="../assets/version.css">
+</head>
+<body>
+
+<header class="masthead">
+  <p class="eyebrow">Lesson 05 · Laravel 12</p>
+  <h1>Building an Endpoint From Blank</h1>
+  <p class="standfirst">Four lessons of reading other people's code. Today you write your own —
+  the exact five-file sequence a take-home test asks for.</p>
+  <p class="meta">Laravel 12 · ~35 minutes · Prerequisite: <a href="0004-eloquent-and-the-n-plus-one-trap.html">Lesson 4</a></p>
+</header>
+
+<div class="callout bridge">
+  <span class="label">The mission changed, and so does this course</span>
+  <p>You are job-hunting now, so the target moved: from <em>contributing to Ethaaf</em> to
+  <strong>being hireable as a Laravel developer</strong>. Three consequences, starting today.</p>
+  <p><strong>1. Laravel 12 is now the default</strong> — what most postings and production apps
+  run. Laravel 10 (Ethaaf) and 13 appear as sidebars. <strong>2. You write code now</strong>, not
+  just read it. <strong>3. Every lesson names the interview question it answers.</strong></p>
+  <p>Ethaaf stays as the worked example. You have read a real, well-engineered multi-tenant
+  codebase — most candidates at your level have not, and that is worth saying out loud.</p>
+</div>
+
+<div class="callout note">
+  <span class="label">Why Laravel 12 and not 13</span>
+  <p>Laravel 13 shipped March 2026 and needs PHP 8.3+. Laravel 12 (PHP 8.2+, supported to
+  February 2027) is what you will actually meet in job postings and existing codebases. Learn 12;
+  11 and 13 are close enough that you will read either comfortably.
+  (<a href="https://laravel.com/docs/13.x/releases#support-policy">support policy</a>)</p>
+</div>
+
+<h2><span class="num">1</span>Cold recall</h2>
+
+<div class="recall">
+  <p class="q">From Lessons 2–4, no scrolling: name the files an API endpoint passes through, and say what each one is for. Then: why is <code>$student-&gt;mosque</code> inside a loop dangerous?</p>
+  <textarea placeholder="The file chain, then the N+1 answer."></textarea>
+  <button class="reveal-btn">Check my answer</button>
+  <div class="recall-answer">
+    <p><strong>Chain:</strong> route (which controller, which middleware) → controller (handles
+    the request) → model (what the thing is) → resource (which fields become JSON). Ethaaf adds
+    service and repository between controller and resource.</p>
+    <p><strong>N+1:</strong> property access on a relationship <em>runs a query</em>. In a loop
+    over 500 rows that is 500 queries. Fix: eager load with <code>with()</code>, or
+    <code>withCount()</code> when you only need the number.</p>
+    <p>Both are common interview questions. The N+1 one is near-guaranteed.</p>
+  </div>
+</div>
+
+<h2><span class="num">2</span>The sequence</h2>
+
+<p>"Build an endpoint that lets a teacher record a student's progress." That is a take-home test.
+Here is the order — and the order matters, because each step depends on the one before:</p>
+
+<div class="trace">
+  <div class="trace-step">
+    <span class="trace-label">php artisan make:migration</span>
+    <p><strong>The table.</strong> Nothing can store data until the columns exist.</p>
+  </div>
+  <div class="trace-step">
+    <span class="trace-label">php artisan make:model Progress</span>
+    <p><strong>The model.</strong> Fillable fields, casts, relationships.</p>
+  </div>
+  <div class="trace-step">
+    <span class="trace-label">php artisan make:request StoreProgressRequest</span>
+    <p><strong>The gate.</strong> Validation rules — the real one, not the frontend's.</p>
+  </div>
+  <div class="trace-step">
+    <span class="trace-label">php artisan make:controller ProgressController --api</span>
+    <p><strong>The handler.</strong> Thin: validate, act, return.</p>
+  </div>
+  <div class="trace-step">
+    <span class="trace-label">php artisan make:resource ProgressResource</span>
+    <p><strong>The contract.</strong> Which fields reach the client.</p>
+  </div>
+  <div class="trace-step">
+    <span class="trace-label">Route::apiResource(...)</span>
+    <p><strong>The wiring.</strong> Last, because it points at something that now exists.</p>
+  </div>
+</div>
+
+<div class="callout bridge">
+  <span class="label">Say this in an interview</span>
+  <p>Being able to recite this sequence — and explain <em>why</em> it runs in that order — is
+  itself a strong signal. It says you have built something, not just read about it. Most
+  candidates can name the pieces; fewer can order them and justify it.</p>
+</div>
+
+<h2><span class="num">3</span>Writing it</h2>
+
+<h3>① Migration</h3>
+
+<p class="filename">database/migrations/2026_10_18_000000_create_progress_table.php</p>
+<pre><code>public function up(): void
+{
+    Schema::create('progress', function (Blueprint $table) {
+        $table-&gt;id();
+        $table-&gt;foreignId('student_id')-&gt;constrained()-&gt;cascadeOnDelete();
+        $table-&gt;unsignedSmallInteger('pages');
+        $table-&gt;date('recorded_on');
+        $table-&gt;timestamps();
+    });
+}</code></pre>
+
+<p>Three things an interviewer listens for here. <code>foreignId()-&gt;constrained()</code>
+creates the column <em>and</em> the foreign key, inferring the table from the name.
+<code>cascadeOnDelete()</code> states what happens to progress when a student is deleted — a
+deliberate decision, not a default. And <code>timestamps()</code> adds
+<code>created_at</code>/<code>updated_at</code>, which Eloquent maintains automatically.</p>
+
+<h3>② Model</h3>
+
+<p class="filename">app/Models/Progress.php</p>
+<pre><code>class Progress extends Model
+{
+    protected $fillable = ['student_id', 'pages', 'recorded_on'];
+
+    protected $casts = [
+        'recorded_on' =&gt; 'date',
+        'pages'       =&gt; 'integer',
+    ];
+
+    public function student()
+    {
+        return $this-&gt;belongsTo(Student::class);
+    }
+}</code></pre>
+
+<div class="callout hazard">
+  <span class="label">Interview question: what is <code>$fillable</code> actually for?</span>
+  <p>It prevents <strong>mass-assignment vulnerabilities</strong>. <code>Progress::create($data)</code>
+  with raw request data would otherwise let a caller set <em>any</em> column — including
+  <code>id</code>, or on a User model, <code>is_admin</code>. <code>$fillable</code> is an
+  allow-list. Being able to say the phrase "mass assignment" and explain the attack is a
+  meaningful signal; many candidates know the property but not the reason.</p>
+</div>
+
+<h3>③ Form Request — the heart of it</h3>
+
+<p class="filename">app/Http/Requests/StoreProgressRequest.php</p>
+<pre><code>class StoreProgressRequest extends FormRequest
+{
+    public function authorize(): bool
+    {
+        return $this-&gt;user()-&gt;can('create', Progress::class);
+    }
+
+    public function rules(): array
+    {
+        return [
+            'student_id'  =&gt; ['required', 'integer', 'exists:students,id'],
+            'pages'       =&gt; ['required', 'integer', 'min:1', 'max:604'],
+            'recorded_on' =&gt; ['required', 'date', 'before_or_equal:today'],
+        ];
+    }
+}</code></pre>
+
+<p>Two methods, two separate jobs, and interviewers probe the distinction:
+<code>authorize()</code> answers <em>"may this user do this at all?"</em> and
+<code>rules()</code> answers <em>"is this data acceptable?"</em> A failed
+<code>authorize()</code> returns <strong>403</strong>; failed rules return <strong>422</strong>
+(<a href="https://laravel.com/docs/12.x/validation#form-request-validation">docs</a>).</p>
+
+<p>Use it by type-hinting — validation runs <em>before</em> your method body:</p>
+
+<pre><code>public function store(StoreProgressRequest $request)
+{
+    $progress = Progress::create($request-&gt;validated());
+
+    return new ProgressResource($progress);
+}</code></pre>
+
+<div class="callout note">
+  <span class="label">The 422 your SPA has been receiving for years</span>
+  <pre><code>{
+  "message": "The pages field is required. (and 1 more error)",
+  "errors": {
+    "pages":       ["The pages field is required."],
+    "recorded_on": ["The recorded on field must be a date before or equal to today."]
+  }
+}</code></pre>
+  <p>You have written frontend code against this exact shape. Now you know what produces it:
+  a Form Request, automatically, with no error-handling code in the controller at all.</p>
+</div>
+
+<h3>④ Resource, and ⑤ the route</h3>
+
+<pre><code>// app/Http/Resources/ProgressResource.php
+public function toArray(Request $request): array
+{
+    return [
+        'id'           =&gt; $this-&gt;id,
+        'pages'        =&gt; $this-&gt;pages,
+        'recorded_on'  =&gt; $this-&gt;recorded_on-&gt;toDateString(),
+        'student_name' =&gt; $this-&gt;whenLoaded('student', fn () =&gt; $this-&gt;student-&gt;name),
+    ];
+}
+
+// routes/api.php
+Route::middleware('auth:sanctum')-&gt;group(function () {
+    Route::apiResource('progress', ProgressController::class);
+});</code></pre>
+
+<p><code>whenLoaded()</code> is the Lesson 4 defence, built into the Resource layer: include the
+relation <strong>only if it was eager loaded</strong>, so the Resource can never silently trigger
+an N+1. Using it unprompted in a take-home is a genuine signal of competence.</p>
+
+<h2><span class="num">4</span>How Ethaaf does validation</h2>
+
+<p>Your worked example, now that you can read it properly —
+<code>MeasurementFormRequest</code>, where a form's grades must total exactly 100:</p>
+
+<pre><code>public function rules(): array
+{
+    $measurementForm = $this-&gt;route('measurement_form');
+    $uniqueRule = Rule::unique(MeasurementForm::class, 'name')-&gt;ignore($measurementForm);
+
+    $rules = [
+        'name'             =&gt; ['required', 'string', 'max:255', $uniqueRule],
+        'elements'         =&gt; ['required', 'array', 'min:1'],
+        'elements.*.name'  =&gt; ['required', 'string'],
+        'elements.*.grade' =&gt; ['required', 'numeric', 'min:0'],
+    ];
+    // …
+}
+
+public function withValidator($validator): void
+{
+    $validator-&gt;after(function ($validator) {
+        $total = collect($this-&gt;input('elements', []))-&gt;sum('grade');
+        if ($total != 100) {
+            $validator-&gt;errors()-&gt;add('elements', __('messages.measurement_form_grades_must_equal_100'));
+        }
+    });
+}</code></pre>
+
+<p>Four techniques worth stealing, each answering a real interview question:</p>
+
+<table>
+  <thead><tr><th style="width:34%">Technique</th><th>What it solves</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><code>elements.*.grade</code></td>
+      <td>Validating every item in an array — <code>*</code> is a wildcard</td>
+    </tr>
+    <tr>
+      <td><code>Rule::unique(...)-&gt;ignore($x)</code></td>
+      <td>"Unique, except itself" — without it, every update fails its own uniqueness check</td>
+    </tr>
+    <tr>
+      <td><code>withValidator()</code></td>
+      <td>Cross-field rules no single-field rule can express (the sum must be 100)</td>
+    </tr>
+    <tr>
+      <td>Conditional rules in <code>rules()</code></td>
+      <td>Rules that depend on the record being edited</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>Ethaaf also has a custom <code>Rule::tenantExists('sections')</code> — an
+<code>exists</code> check that respects tenancy, so a caller cannot reference another tenant's
+section by guessing its id. <strong>That is a good thing to describe in an interview</strong>:
+it shows you have seen validation used as a security boundary, not just a form-checker.</p>
+
+<h2><span class="num">5</span>Retrieval practice</h2>
+
+<div class="quiz"
+     data-answer="c"
+     data-why="authorize() asks whether this user may perform the action at all, and returns 403 when it fails. rules() checks the data and returns 422."
+     data-hintA="Both live in the same class — the split is by purpose, not by location."
+     data-hintB="Neither runs after the controller; both run before the method body executes."
+     data-hintD="rules() does not check permissions, and authorize() does not inspect field values.">
+  <p class="q">In a Form Request, what distinguishes <code>authorize()</code> from <code>rules()</code>?</p>
+  <div class="opts">
+    <button class="opt" data-opt="a">One runs on the server, one runs on clients</button>
+    <button class="opt" data-opt="b">One runs before and one runs after the action</button>
+    <button class="opt" data-opt="c">One checks permission, one checks the data</button>
+    <button class="opt" data-opt="d">One checks the fields, one checks the roles</button>
+  </div>
+  <div class="feedback"></div>
+</div>
+
+<div class="quiz"
+     data-answer="a"
+     data-why="422 Unprocessable Entity, with a message and an errors object keyed by field name."
+     data-hintB="400 is a generic bad request. Laravel is more specific for validation failures."
+     data-hintC="403 is what a failed authorize() returns — permission, not data."
+     data-hintD="401 means unauthenticated. The user here is logged in; their data is wrong.">
+  <p class="q">A JSON request fails validation in a Form Request. What status code comes back?</p>
+  <div class="opts">
+    <button class="opt" data-opt="a">422, with an errors object keyed by field</button>
+    <button class="opt" data-opt="b">400, with an errors object keyed by field</button>
+    <button class="opt" data-opt="c">403, with an errors object keyed by field</button>
+    <button class="opt" data-opt="d">401, with an errors object keyed by field</button>
+  </div>
+  <div class="feedback"></div>
+</div>
+
+<div class="quiz"
+     data-answer="b"
+     data-why="$fillable is an allow-list guarding against mass assignment — a caller sending extra fields cannot set columns you never intended."
+     data-hintA="It does not affect the database schema at all; that is the migration's job."
+     data-hintC="Validation lives in the Form Request. $fillable is a separate, second defence."
+     data-hintD="It does not control serialisation — that is the Resource, or $hidden.">
+  <p class="q">What is <code>$fillable</code> on a model protecting you from?</p>
+  <div class="opts">
+    <button class="opt" data-opt="a">Columns being created without any defaults</button>
+    <button class="opt" data-opt="b">Callers setting columns you did not intend</button>
+    <button class="opt" data-opt="c">Invalid data being saved without validation</button>
+    <button class="opt" data-opt="d">Private fields being exposed in a response</button>
+  </div>
+  <div class="feedback"></div>
+</div>
+
+<div class="recall">
+  <p class="q"><strong>Say this one out loud, as if to an interviewer.</strong> "Walk me through how you'd add a POST endpoint to a Laravel API." Speak it before you type.</p>
+  <textarea placeholder="Say it aloud first, then write the version you said. Fluent speech is the goal, not perfect prose."></textarea>
+  <button class="reveal-btn">Check my answer</button>
+  <div class="recall-answer">
+    <p>A strong answer covers: <strong>migration</strong> (table) → <strong>model</strong>
+    (fillable, casts, relationships) → <strong>Form Request</strong> (authorize + rules) →
+    <strong>controller</strong> (thin: validated data in, resource out) →
+    <strong>Resource</strong> (JSON contract) → <strong>route</strong> (apiResource, behind auth
+    middleware).</p>
+    <p>What lifts it from adequate to good: mentioning that validation failures return
+    <strong>422 automatically</strong>, that <code>$fillable</code> guards
+    <strong>mass assignment</strong>, and that you would eager load relations the Resource touches
+    to avoid <strong>N+1</strong>. Those three asides signal real experience.</p>
+    <p>Did you actually say it aloud? Speaking recruits different retrieval than typing, and it is
+    the skill the interview actually measures.</p>
+  </div>
+</div>
+
+<h2><span class="num">6</span>Version shift</h2>
+
+<aside class="vshift">
+  <span class="vlabel">12 ← 10 · Ethaaf</span>
+  <p>Everything in this lesson works unchanged in Laravel 10, so Ethaaf's code reads the same.
+  The one structural difference you will notice: Laravel 10 registers middleware in
+  <code>app/Http/Kernel.php</code>; <strong>11 and 12 use <code>bootstrap/app.php</code></strong>.
+  Ethaaf has the Kernel file. That is the single most common "why is this file missing?" moment
+  when moving between versions.</p>
+</aside>
+
+<aside class="vshift">
+  <span class="vlabel">12 → 13 · additions</span>
+  <p>Laravel 13 adds <code>#[Middleware]</code> and <code>#[Authorize]</code> PHP attributes on
+  controllers, and first-party JSON:API resources. Neither exists in 12. If a tutorial shows
+  attributes above a controller class, it is 13-only — use
+  <code>-&gt;middleware()</code> on the route instead.</p>
+</aside>
+
+<h2><span class="num">7</span>Your task before Lesson 6</h2>
+
+<p><strong>One — build it, for real.</strong> This is the first lesson where reading is not
+enough. Create a throwaway Laravel 12 app and build the progress endpoint end to end:</p>
+
+<pre><code>composer create-project laravel/laravel:^12.0 practice-api
+cd practice-api
+php artisan install:api        # adds routes/api.php + Sanctum
+php artisan make:model Progress -mrR
+</code></pre>
+
+<p><code>-mrR</code> generates the migration, a resource controller and an API resource in one
+command. Then wire it up, and <code>POST</code> to it until you have seen with your own eyes:
+a <strong>201</strong> on success, a <strong>422</strong> with a bad payload, and a
+<strong>404</strong> for a missing id.</p>
+
+<p><strong>Two — say it out loud.</strong> Record yourself answering "how would you add a POST
+endpoint?" in under two minutes. Listen back once. This feels awkward and is the highest-value
+thirty seconds in the whole lesson — the gap between knowing and *saying* is where interviews
+are lost.</p>
+
+<p><strong>Three — bring me one question you could not answer.</strong> Whatever stumped you
+while building is exactly what Lesson 6 should address.</p>
+
+<div class="source">
+  <span class="label">Primary source — read this next</span>
+  <p><a href="https://laravel.com/docs/12.x/validation#form-request-validation">Laravel 12.x —
+  Form Request Validation</a>. Read that section plus "Available Validation Rules", skimming the
+  rule list rather than memorising it. Knowing rules <em>exist</em> and where to look beats
+  recalling their names.</p>
+  <p>Then: <a href="https://laravel.com/docs/12.x/eloquent#mass-assignment">Mass Assignment</a> ·
+  <a href="https://laravel.com/docs/12.x/migrations">Migrations</a> ·
+  full list in <a href="../RESOURCES.md">RESOURCES.md</a>.</p>
+</div>
+
+<div class="ask-teacher">
+  <span class="label">Ask your teacher</span>
+  <p>You are preparing for interviews now, so use me for that too. Try: <em>"Ask me five Laravel
+  interview questions and grade my answers."</em> · <em>"My take-home test is X — how would you
+  approach it?"</em> · <em>"What would a senior dev criticise in this code I wrote?"</em> ·
+  <em>"How do I describe Ethaaf's multi-tenancy in an interview without overclaiming?"</em></p>
+  <p>That last one matters. You have <strong>read</strong> a production multi-tenant system
+  carefully — real and worth mentioning. You have not <strong>built</strong> one. Saying the
+  first accurately is impressive; implying the second is a trap, because the follow-up questions
+  will find the edge of it fast.</p>
+</div>
+
+<div class="footer">
+  <p class="meta">
+    <strong>Lesson 5 of an ongoing course</strong> · Next: authentication with Sanctum — tokens,
+    guards, and protecting the endpoint you just built.<br>
+    Workspace: <a href="../MISSION.md">MISSION.md</a> ·
+    <a href="../RESOURCES.md">RESOURCES.md</a> ·
+    <a href="0004-eloquent-and-the-n-plus-one-trap.html">← Lesson 4</a> ·
+    <a href="../reference/0004-eloquent-and-versions.html">Eloquent + versions</a> ·
+    <a href="../reference/0005-building-an-endpoint.html">Build checklist →</a>
+  </p>
+</div>
+
+<script src="../assets/quiz.js"></script>
+</body>
+</html>

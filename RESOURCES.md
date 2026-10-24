@@ -62,6 +62,19 @@
 - [Eloquent Relationships — Eager Loading (10.x)](https://laravel.com/docs/10.x/eloquent-relationships#eager-loading)
   `with()`, `withCount()`, nested loads, column pruning, `preventLazyLoading`.
   Use for: the N+1 trap — the most common performance bug he will meet. Verified 2026-10-12.
+- [Sanctum (12.x)](https://laravel.com/docs/12.x/sanctum)
+  Two modes: API tokens vs cookie-based SPA auth. Token issuing, abilities, revoking.
+  Use for: API authentication. **Read "How it Works" first** — the two-modes distinction is
+  the most misunderstood part. Verified 2026-10-18.
+- [Authorization — Policies (12.x)](https://laravel.com/docs/12.x/authorization)
+  Gates vs policies, auto-discovery, `Gate::authorize`, the 403.
+  Use for: "may this user do this?" — distinct from authentication. Verified 2026-10-18.
+- [HTTP Tests (12.x)](https://laravel.com/docs/12.x/http-tests)
+  `postJson`, the assertions, `RefreshDatabase`, `Sanctum::actingAs`.
+  Use for: **the biggest interview differentiator.** Verified 2026-10-18.
+- [Service Container (12.x)](https://laravel.com/docs/12.x/container)
+  DI, binding interfaces to implementations.
+  Use for: "where does business logic belong?" Read to "Binding Interfaces" and stop.
 - [Laravel 11 Upgrade Guide](https://laravel.com/docs/11.x/upgrade)
   The authoritative 10 → 11 delta with impact ratings. Confirms the skeleton restructure is
   **opt-in** and the upgrade is estimated at 15 minutes.

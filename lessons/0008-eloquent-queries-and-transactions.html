@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 8 · Querying Like You Mean It</title>
+<link rel="stylesheet" href="../assets/course.css">
+<link rel="stylesheet" href="../assets/quiz.css">
+<link rel="stylesheet" href="../assets/trace.css">
+<link rel="stylesheet" href="../assets/version.css">
+</head>
+<body>
+
+<header class="masthead">
+  <p class="eyebrow">Lesson 08 · Laravel 12</p>
+  <h1>Querying Like You Mean It</h1>
+  <p class="standfirst">Scopes, the retrieval methods and their failure modes, transactions, and
+  the memory trap that kills exports. The query half of every take-home test.</p>
+  <p class="meta">Laravel 12 · ~30 minutes · Prerequisite: <a href="0007-testing-your-endpoint.html">Lesson 7</a></p>
+</header>
+
+<h2><span class="num">1</span>Cold recall</h2>
+
+<div class="recall">
+  <p class="q">Two from earlier: (a) what does <code>with('mosque')</code> actually do at the SQL level, and (b) what are the four tests worth writing for a create endpoint?</p>
+  <textarea placeholder="Both. The first is Lesson 4, the second is Lesson 7."></textarea>
+  <button class="reveal-btn">Check my answer</button>
+  <div class="recall-answer">
+    <p><strong>(a)</strong> Two queries, not a join: one for the parents, then one
+    <code>WHERE id IN (…)</code> for all related rows at once, matched up in PHP.</p>
+    <p><strong>(b)</strong> Happy path (201 + <code>assertDatabaseHas</code>), unauthenticated
+    (401), invalid payload (422), forbidden (403). Plus 404 for a missing record.</p>
+  </div>
+</div>
+
+<h2><span class="num">2</span>Retrieval methods, and what they do when they fail</h2>
+
+<p>The failure behaviour is what interviewers probe, because it decides whether your controller
+needs a null check:</p>
+
+<table>
+  <thead>
+    <tr><th style="width:28%">Call</th><th style="width:28%">Returns</th><th>When nothing matches</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>::all()</code></td><td>Collection</td><td>Empty collection</td></tr>
+    <tr><td><code>::get()</code></td><td>Collection</td><td>Empty collection</td></tr>
+    <tr><td><code>::find($id)</code></td><td>Model or null</td><td><strong>null</strong></td></tr>
+    <tr><td><code>::findOrFail($id)</code></td><td>Model</td><td><strong>Throws → 404</strong></td></tr>
+    <tr><td><code>::first()</code></td><td>Model or null</td><td><strong>null</strong></td></tr>
+    <tr><td><code>::firstOrFail()</code></td><td>Model</td><td><strong>Throws → 404</strong></td></tr>
+    <tr><td><code>::firstOrCreate([...])</code></td><td>Model</td><td>Creates it</td></tr>
+    <tr><td><code>::count()</code> / <code>sum()</code> / <code>max()</code></td><td>A number</td><td>0 or null</td></tr>
+    <tr><td><code>::exists()</code></td><td>Boolean</td><td>false</td></tr>
+  </tbody>
+</table>
+
+<div class="callout bridge">
+  <span class="label">The <code>OrFail</code> habit</span>
+  <p>In an API, prefer <code>findOrFail</code> over <code>find</code>. The exception becomes a
+  clean <strong>404</strong> automatically, so you skip the null check and cannot forget it. This
+  is also exactly what route model binding does for you — now you know what it calls underneath.</p>
+</div>
+
+<h2><span class="num">3</span>Building a query</h2>
+
+<pre><code>$progress = Progress::query()
+    -&gt;where('pages', '&gt;=', 5)
+    -&gt;whereBetween('recorded_on', [$start, $end])
+    -&gt;whereIn('student_id', $ids)
+    -&gt;whereNotNull('verified_at')
+    -&gt;whereHas('student', fn ($q) =&gt; $q-&gt;where('active', true))
+    -&gt;with('student')
+    -&gt;withCount('corrections')
+    -&gt;orderByDesc('recorded_on')
+    -&gt;paginate(20);</code></pre>
+
+<p>Three of these are worth singling out:</p>
+
+<div class="trace">
+  <div class="trace-step">
+    <span class="trace-label">whereHas('student', fn ($q) =&gt; …)</span>
+    <p>Filter <em>parents</em> by a condition on their <em>children</em> — "progress belonging to
+    active students". A frequent take-home requirement, and the thing people reach for raw SQL
+    to do. <code>whereDoesntHave()</code> is the inverse.</p>
+  </div>
+  <div class="trace-step">
+    <span class="trace-label">paginate(20)</span>
+    <p>Returns a paginator and <strong>automatically</strong> adds <code>meta</code> and
+    <code>links</code> to the JSON when wrapped in a Resource collection. Never hand-roll
+    <code>limit</code>/<code>offset</code> for a list endpoint; use this and say so.</p>
+  </div>
+  <div class="trace-step">
+    <span class="trace-label">when($condition, fn ($q) =&gt; …)</span>
+    <p>Conditional clauses without breaking the chain:<br>
+    <code>-&gt;when($request-&gt;student_id, fn ($q, $id) =&gt; $q-&gt;where('student_id', $id))</code><br>
+    This is how you build filtered list endpoints cleanly — a very common interview exercise.</p>
+  </div>
+</div>
+
+<h2><span class="num">4</span>Scopes — naming a query once</h2>
+
+<p>A scope turns a repeated set of constraints into a name. <strong>Two syntaxes exist and you
+will meet both:</strong></p>
+
+<pre><code>// Classic — the scope prefix. What Ethaaf and most existing code uses.
+public function scopeVerified($query)
+{
+    return $query-&gt;whereNotNull('verified_at');
+}
+
+// Modern — the #[Scope] attribute, Laravel 12+.
+#[Scope]
+protected function verified(Builder $query): void
+{
+    $query-&gt;whereNotNull('verified_at');
+}</code></pre>
+
+<p>Both are called the same way, and the prefix is dropped either way:</p>
+
+<pre><code>Progress::verified()-&gt;recentFirst()-&gt;get();</code></pre>
+
+<div class="callout note">
+  <span class="label">Local vs global — the distinction that matters</span>
+  <p><strong>Local scopes</strong> are opt-in: nothing happens unless you call them.
+  <strong>Global scopes</strong> apply automatically to <em>every</em> query on that model, which
+  is how Ethaaf's tenant isolation works — <code>TenantScope</code> appends
+  <code>WHERE tenant_id = …</code> invisibly.</p>
+  <p>That is the power and the danger together. Remove one with
+  <code>withoutGlobalScope(TenantScope::class)</code> — <strong>by class name</strong>, never
+  bare <code>withoutGlobalScopes()</code>, as Lesson 3 established.</p>
+</div>
+
+<h2><span class="num">5</span>Transactions</h2>
+
+<p>When several writes must all succeed or all fail together:</p>
+
+<pre><code>use Illuminate\Support\Facades\DB;
+
+DB::transaction(function () use ($request) {
+    $progress = Progress::create($request-&gt;validated());
+
+    $progress-&gt;student-&gt;increment('total_pages', $progress-&gt;pages);
+
+    ActivityLog::create([
+        'action'  =&gt; 'progress.recorded',
+        'user_id' =&gt; auth()-&gt;id(),
+    ]);
+});</code></pre>
+
+<p>If any line throws, <strong>everything rolls back</strong>. Without this you could create the
+progress record, fail to update the total, and leave the data permanently inconsistent.</p>
+
+<div class="callout hazard">
+  <span class="label">Interview question: when do you need a transaction?</span>
+  <p><strong>Whenever one logical operation spans more than one write.</strong> Creating an order
+  plus its line items. Transferring a balance. Recording progress and updating a running total.
+  If a half-finished state would be wrong, wrap it.</p>
+  <p>A good extra: queue jobs dispatched inside a transaction can run <em>before</em> it commits
+  and fail to find the row — Laravel's <code>after_commit</code> option exists for exactly that.
+  Knowing this is a strong signal.</p>
+</div>
+
+<h2><span class="num">6</span>The memory trap</h2>
+
+<p>This one shows up in real take-homes framed as "export all records":</p>
+
+<pre><code>// ✗ Loads every row into memory. 500k rows = out of memory.
+foreach (Progress::all() as $row) { … }
+
+// ✓ 500 at a time
+Progress::chunk(500, function ($rows) {
+    foreach ($rows as $row) { … }
+});
+
+// ✓ One at a time, lazily — reads like a normal foreach
+foreach (Progress::lazy() as $row) { … }
+
+// ✓ Chunk by id — safe when you are MODIFYING rows as you go
+Progress::chunkById(500, function ($rows) { … });</code></pre>
+
+<p><code>chunkById</code> matters: if you update rows while paginating with
+<code>chunk</code>, the offsets shift underneath you and records get skipped. Naming that
+unprompted is a senior-sounding detail.</p>
+
+<h2><span class="num">7</span>Retrieval practice</h2>
+
+<div class="quiz"
+     data-answer="c"
+     data-why="findOrFail throws a ModelNotFoundException, which Laravel converts into a 404 response automatically."
+     data-hintA="That is what find() does — the OrFail variants exist precisely to avoid it."
+     data-hintB="It does not create anything; that is firstOrCreate."
+     data-hintD="An empty collection comes from get() or all(), not from a single-record lookup.">
+  <p class="q">What does <code>findOrFail($id)</code> do when no row matches?</p>
+  <div class="opts">
+    <button class="opt" data-opt="a">Returns null for the caller to check</button>
+    <button class="opt" data-opt="b">Creates the record with default values</button>
+    <button class="opt" data-opt="c">Throws, which becomes a 404 response</button>
+    <button class="opt" data-opt="d">Returns an empty collection of models</button>
+  </div>
+  <div class="feedback"></div>
+</div>
+
+<div class="quiz"
+     data-answer="a"
+     data-why="A global scope applies to every query on the model automatically; a local scope only applies when you call it."
+     data-hintB="Both can be used anywhere — the difference is automatic versus opt-in."
+     data-hintC="Both are defined on the model; location is not the distinction."
+     data-hintD="Both can take parameters, so that is not what separates them.">
+  <p class="q">What separates a global scope from a local scope?</p>
+  <div class="opts">
+    <button class="opt" data-opt="a">Global applies always, local when you call</button>
+    <button class="opt" data-opt="b">Global works in controllers, local in models</button>
+    <button class="opt" data-opt="c">Global lives in a class, local in the model</button>
+    <button class="opt" data-opt="d">Global takes arguments, local takes no args</button>
+  </div>
+  <div class="feedback"></div>
+</div>
+
+<div class="quiz"
+     data-answer="d"
+     data-why="chunk() uses offsets. Modifying rows shifts those offsets, so records get skipped. chunkById paginates by primary key instead."
+     data-hintA="Speed is not the issue — correctness is."
+     data-hintB="Both use roughly the same memory; that is the point of chunking at all."
+     data-hintC="Ordering is not what breaks; rows are silently missed.">
+  <p class="q">Why use <code>chunkById</code> rather than <code>chunk</code> when updating rows as you iterate?</p>
+  <div class="opts">
+    <button class="opt" data-opt="a">Because chunkById runs faster on large sets</button>
+    <button class="opt" data-opt="b">Because chunkById uses far less memory here</button>
+    <button class="opt" data-opt="c">Because chunkById keeps the rows in order</button>
+    <button class="opt" data-opt="d">Because shifting offsets would skip records</button>
+  </div>
+  <div class="feedback"></div>
+</div>
+
+<div class="recall">
+  <p class="q"><strong>Out loud:</strong> "Build me an endpoint listing students with more than 10 pages this month, newest first, paginated, filtered by section if provided." Say the query.</p>
+  <textarea placeholder="Speak the chain, then write it. Mention eager loading."></textarea>
+  <button class="reveal-btn">Check my answer</button>
+  <div class="recall-answer">
+    <pre><code>Progress::query()
+    -&gt;where('pages', '&gt;', 10)
+    -&gt;whereBetween('recorded_on', [now()-&gt;startOfMonth(), now()-&gt;endOfMonth()])
+    -&gt;when($request-&gt;section_id, fn ($q, $id) =&gt; $q-&gt;where('section_id', $id))
+    -&gt;with('student')
+    -&gt;orderByDesc('recorded_on')
+    -&gt;paginate(20);</code></pre>
+    <p>What earns extra credit: <code>when()</code> for the optional filter rather than an
+    <code>if</code>, <code>with('student')</code> because the Resource will touch it
+    (<strong>N+1</strong>), and <code>paginate</code> rather than <code>get</code> on a list
+    endpoint.</p>
+  </div>
+</div>
+
+<h2><span class="num">8</span>Version shift</h2>
+
+<aside class="vshift">
+  <span class="vlabel">12 ← 10 · Ethaaf</span>
+  <p>The <code>#[Scope]</code> attribute is <strong>Laravel 12+</strong>. Ethaaf and every older
+  codebase use the <code>scopeVerified()</code> prefix convention. Both work in 12 — if a tutorial
+  shows the attribute and your codebase shows the prefix, neither is wrong.</p>
+</aside>
+
+<h2><span class="num">9</span>Your task before Lesson 9</h2>
+
+<p><strong>One — write three queries.</strong> In your practice app with ~20 seeded rows: a
+filtered + paginated list; a <code>whereHas</code> query; and a scope you define and chain.
+Use <code>-&gt;toSql()</code> or Telescope to <em>see</em> the SQL each produces.</p>
+
+<p><strong>Two — find a transaction in Ethaaf.</strong> Search for <code>DB::transaction</code>
+and read one. Ask yourself what would break without it.</p>
+
+<p><strong>Three — out loud.</strong> "When would you use a database transaction?" in thirty
+seconds, with a concrete example.</p>
+
+<div class="source">
+  <span class="label">Primary source — read this next</span>
+  <p><a href="https://laravel.com/docs/12.x/eloquent#query-scopes">Laravel 12.x — Query
+  Scopes</a> and <a href="https://laravel.com/docs/12.x/queries">Query Builder</a>. Skim the
+  builder page rather than memorising it; knowing what exists is the skill.</p>
+  <p>Then: <a href="https://laravel.com/docs/12.x/database#database-transactions">Database
+  Transactions</a> — short, and worth reading fully.</p>
+</div>
+
+<div class="ask-teacher">
+  <span class="label">Ask your teacher</span>
+  <p>Try: <em>"Here's a requirement in English — write the query."</em> ·
+  <em>"Why is my whereHas slow?"</em> ·
+  <em>"Show me a complex query in Ethaaf and explain it."</em> ·
+  <em>"When should I drop to raw SQL instead of Eloquent?"</em></p>
+</div>
+
+<div class="footer">
+  <p class="meta">
+    <strong>Lesson 8 of 10</strong> · Next: architecture — services, dependency injection, and
+    where business logic belongs.<br>
+    <a href="0007-testing-your-endpoint.html">← Lesson 7</a> ·
+    <a href="0009-architecture-services-and-di.html">Lesson 9 →</a> ·
+    <a href="../reference/0004-eloquent-and-versions.html">Eloquent reference</a> ·
+    <a href="../MISSION.md">MISSION.md</a>
+  </p>
+</div>
+
+<script src="../assets/quiz.js"></script>
+</body>
+</html>

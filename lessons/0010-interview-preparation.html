@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 10 · Saying What You Know</title>
+<link rel="stylesheet" href="../assets/course.css">
+<link rel="stylesheet" href="../assets/quiz.css">
+<link rel="stylesheet" href="../assets/trace.css">
+<link rel="stylesheet" href="../assets/version.css">
+</head>
+<body>
+
+<header class="masthead">
+  <p class="eyebrow">Lesson 10 · The last one</p>
+  <h1>Saying What You Know</h1>
+  <p class="standfirst">Nine lessons of knowledge. This one is about getting it out of your head
+  and into someone else's — under pressure, in your second language, honestly.</p>
+  <p class="meta">~40 minutes · Prerequisite: <a href="0009-architecture-services-and-di.html">Lesson 9</a> · Then: practice</p>
+</header>
+
+<div class="callout bridge">
+  <span class="label">What you actually have</span>
+  <p>It is easy to feel like a beginner because Laravel is new to you. Take an accurate
+  inventory instead:</p>
+  <p><strong>~4 years professional frontend</strong> (Vue, React, JS) — real engineering
+  experience, not a bootcamp. <strong>You have consumed a production API for years</strong>, so
+  you understand API design from the consumer side, which most backend juniors do not.
+  <strong>You have read a sophisticated multi-tenant codebase</strong> — service/repository
+  layers, global scopes, modular structure. <strong>You can build, secure and test an endpoint</strong>
+  end to end.</p>
+  <p>You are not a junior backend developer who knows nothing. You are a mid-level developer
+  moving across the stack. Those are different stories, and the second is true.</p>
+</div>
+
+<h2><span class="num">1</span>Full-course retrieval</h2>
+
+<p>Everything, cold. This is the hardest recall in the course and the most valuable.</p>
+
+<div class="recall">
+  <p class="q">Without looking: name the status code and the mechanism for each — unauthenticated, forbidden, invalid data, missing record. Then explain N+1 and its fix.</p>
+  <textarea placeholder="Four codes with mechanisms, then N+1."></textarea>
+  <button class="reveal-btn">Check my answer</button>
+  <div class="recall-answer">
+    <p><strong>401</strong> — <code>auth:sanctum</code>, no valid token/session ·
+    <strong>403</strong> — policy or gate returned false ·
+    <strong>422</strong> — Form Request <code>rules()</code> failed ·
+    <strong>404</strong> — route model binding found no row</p>
+    <p><strong>N+1:</strong> accessing a relationship as a property runs a query, so a loop over
+    N rows runs N extra queries. Fix with <code>with()</code> to eager load (two queries total),
+    or <code>withCount()</code> for counts. <code>Model::preventLazyLoading()</code> turns
+    accidents into exceptions in development.</p>
+    <p>If that came out fluently, you can hold a Laravel conversation. If it did not, re-read
+    References 02 and 04 — and note *where* you stalled, because that is your revision list.</p>
+  </div>
+</div>
+
+<h2><span class="num">2</span>The ten questions</h2>
+
+<p>These account for most Laravel technical screens. Answer each aloud before reading on —
+reading an answer you have not attempted produces fluency, not retention.</p>
+
+<div class="trace">
+  <div class="trace-step">
+    <span class="trace-label">1 · Walk me through the request lifecycle.</span>
+    <p>Entry point <code>public/index.php</code> → bootstrap → router → middleware → controller
+    → model/database → response. <strong>Add:</strong> PHP boots fresh per request and dies after
+    — which is why state lives in sessions, caches and the database.</p>
+  </div>
+  <div class="trace-step">
+    <span class="trace-label">2 · What is the N+1 problem?</span>
+    <p>As above. <strong>Add a real number:</strong> "I've read a performance report on a
+    codebase where cascading N+1s produced over ten thousand queries in one call." Concrete
+    beats theoretical.</p>
+  </div>
+  <div class="trace-step">
+    <span class="trace-label">3 · Authentication vs authorization?</span>
+    <p>Who you are versus what you may do. 401 versus 403. Sanctum versus policies.
+    <strong>Add:</strong> for a first-party SPA use cookie-based auth, not tokens, because a
+    stored token is exposed to XSS.</p>
+  </div>
+  <div class="trace-step">
+    <span class="trace-label">4 · How do you add a POST endpoint?</span>
+    <p>Migration → model → Form Request → controller → Resource → route.
+    <strong>Add:</strong> 422 comes free from the Form Request; <code>$fillable</code> guards
+    mass assignment.</p>
+  </div>
+  <div class="trace-step">
+    <span class="trace-label">5 · Do you write tests? What do you test?</span>
+    <p>Feature tests, because they cover the whole stack. Happy path plus the failures — 401,
+    403, 422, 404. <code>RefreshDatabase</code> for isolation, factories for data.
+    <strong>Add:</strong> "I test the failure paths, not just the happy path."</p>
+  </div>
+  <div class="trace-step">
+    <span class="trace-label">6 · Where does business logic belong?</span>
+    <p>Not the controller. Service layer when logic is shared or complex.
+    <strong>Add the judgement:</strong> for simple CRUD a service is indirection without benefit.</p>
+  </div>
+  <div class="trace-step">
+    <span class="trace-label">7 · Explain middleware.</span>
+    <p>Runs before the controller and can reject the request — auth, rate limiting, CSRF, tenant
+    resolution. <strong>Add:</strong> it is why a controller can assume a valid user exists.</p>
+  </div>
+  <div class="trace-step">
+    <span class="trace-label">8 · What is a migration, and why not just edit the database?</span>
+    <p>Version-controlled, executable schema. Every environment and teammate gets the same
+    structure, and changes are reviewable in a PR. <strong>Add:</strong> in Laravel 11+,
+    <code>-&gt;change()</code> drops modifiers you do not re-state — a real upgrade hazard.</p>
+  </div>
+  <div class="trace-step">
+    <span class="trace-label">9 · When do you need a transaction?</span>
+    <p>When one logical operation spans several writes and a half-finished state would be wrong.
+    <strong>Add:</strong> jobs dispatched inside a transaction can run before it commits — hence
+    <code>after_commit</code>.</p>
+  </div>
+  <div class="trace-step">
+    <span class="trace-label">10 · Tell me about multi-tenancy. <em>(your differentiator)</em></span>
+    <p>See section 3 — this one needs care.</p>
+  </div>
+</div>
+
+<h2><span class="num">3</span>Your strongest story, told honestly</h2>
+
+<p>Multi-tenancy is the most distinctive thing you can discuss. It is also where you could
+overclaim and get caught. Here is the calibration:</p>
+
+<div class="callout bridge">
+  <span class="label">Say this</span>
+  <p><em>"The product I worked on was a multi-tenant SaaS — one Laravel API serving many
+  organisations. I worked on the frontend, but I spent time reading the backend because I wanted
+  to move into full-stack work. It used single-database tenancy: one shared database, a
+  <code>tenant_id</code> column, and a global Eloquent scope that appends the tenant filter to
+  every query automatically.</em></p>
+  <p><em>The part I found most interesting is that the scope is a no-op when tenancy isn't
+  initialised — so in a queue job or an admin panel, the same query silently returns every
+  tenant's rows. Their repositories handle it by dropping the scope deliberately and replacing it
+  with an explicit tenant constraint that fails closed: an empty tenant list matches nothing
+  rather than everything."</em></p>
+</div>
+
+<div class="callout hazard">
+  <span class="label">Not this</span>
+  <p><em>"I built a multi-tenant system."</em> You did not, and two follow-up questions will
+  establish that. The honest version is <strong>more</strong> impressive, because "I read
+  production code carefully and understood a subtle failure mode" is exactly the behaviour that
+  makes someone useful in week one.</p>
+</div>
+
+<p>The same applies throughout: <strong>"I've read" and "I've built" are different claims, and
+the first is still valuable.</strong> Interviewers trust candidates who draw that line
+themselves.</p>
+
+<h2><span class="num">4</span>Take-home strategy</h2>
+
+<p>Take-homes are where you can outperform your experience level, because they reward care
+rather than speed.</p>
+
+<table>
+  <thead><tr><th style="width:30%">Do</th><th>Why it works</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Write a README</strong></td><td>Setup steps, decisions, known trade-offs. Many submissions have none; yours will stand out before any code is read.</td></tr>
+    <tr><td><strong>Include tests</strong></td><td>The single biggest differentiator. Even four.</td></tr>
+    <tr><td><strong>Use Form Requests</strong></td><td>Validation in the controller reads as inexperience.</td></tr>
+    <tr><td><strong>Use API Resources</strong></td><td>Returning raw models leaks columns and reads as careless.</td></tr>
+    <tr><td><strong>Eager load</strong></td><td>Reviewers look for N+1 specifically.</td></tr>
+    <tr><td><strong>Run Pint</strong></td><td>Consistent formatting, one command.</td></tr>
+    <tr><td><strong>Name what you skipped</strong></td><td>"I'd add rate limiting and caching here, left out for scope" shows judgement, not gaps.</td></tr>
+  </tbody>
+</table>
+
+<p>And the inverse: do not gold-plate. A clean, tested, well-explained small solution beats a
+sprawling one with half-finished extras.</p>
+
+<h2><span class="num">5</span>Answering what you do not know</h2>
+
+<p>This will happen, and how you handle it is itself being assessed.</p>
+
+<div class="trace">
+  <div class="trace-step">
+    <span class="trace-label">Say what you do know, then the boundary</span>
+    <p><em>"I haven't used queues in production. I understand the idea — push slow work to a
+    background worker so the request returns fast — and I've seen jobs in a codebase that used
+    Horizon, but I haven't written one myself."</em> Honest, demonstrates partial knowledge, and
+    invites them to teach you — which interviewers enjoy.</p>
+  </div>
+  <div class="trace-step">
+    <span class="trace-label">Never bluff</span>
+    <p>Experienced interviewers detect it instantly, and it poisons the answers they believed
+    before it. One admitted gap costs little; one caught bluff costs the interview.</p>
+  </div>
+  <div class="trace-step">
+    <span class="trace-label">Reach for a real parallel</span>
+    <p>Four years of frontend gives you genuine ones: N+1 is <code>fetch()</code> in a
+    <code>.map()</code>; middleware is a navigation guard; DI is provide/inject. Showing you can
+    map new concepts onto known ones is a sign you will learn their codebase quickly.</p>
+  </div>
+</div>
+
+<h2><span class="num">6</span>Final retrieval</h2>
+
+<div class="quiz"
+     data-answer="c"
+     data-why="Honesty about the boundary of your experience builds trust; experienced interviewers detect bluffing immediately."
+     data-hintA="Guessing confidently is the fastest way to lose credibility you had already earned."
+     data-hintB="Silence wastes the chance to show related knowledge you do have."
+     data-hintD="Changing the subject reads as evasion, and they will notice.">
+  <p class="q">An interviewer asks about something you have never used. Best response?</p>
+  <div class="opts">
+    <button class="opt" data-opt="a">Give your best guess, stated confidently</button>
+    <button class="opt" data-opt="b">Say nothing and wait for the next question</button>
+    <button class="opt" data-opt="c">Say what you know, then name the boundary</button>
+    <button class="opt" data-opt="d">Redirect to a topic you know much better</button>
+  </div>
+  <div class="feedback"></div>
+</div>
+
+<div class="quiz"
+     data-answer="b"
+     data-why="Tests are the clearest signal that a candidate has worked on a real team, and most submissions at this level have none."
+     data-hintA="Extra features often read as poor scope control rather than strength."
+     data-hintC="Comments on every line read as noise; reviewers want clear code."
+     data-hintD="A custom framework layer is the opposite of what reviewers want to see.">
+  <p class="q">What most improves a take-home submission?</p>
+  <div class="opts">
+    <button class="opt" data-opt="a">Adding extra features beyond what was asked</button>
+    <button class="opt" data-opt="b">Including tests for the endpoints you built</button>
+    <button class="opt" data-opt="c">Adding detailed comments to every method</button>
+    <button class="opt" data-opt="d">Building your own abstraction layer on top</button>
+  </div>
+  <div class="feedback"></div>
+</div>
+
+<div class="recall">
+  <p class="q"><strong>The final exercise.</strong> Record yourself answering: "Tell me about your experience with Laravel." Two minutes. Then listen back.</p>
+  <textarea placeholder="Write the version you said out loud, not an idealised one."></textarea>
+  <button class="reveal-btn">Check my answer</button>
+  <div class="recall-answer">
+    <p>A strong two minutes covers: <strong>where you come from</strong> (four years frontend,
+    Vue primary) · <strong>why Laravel</strong> (worked against a production Laravel API, wanted
+    to move full-stack) · <strong>what you know</strong> (lifecycle, Eloquent and N+1, validation,
+    Sanctum and policies, feature tests) · <strong>your distinctive bit</strong> (read a
+    multi-tenant codebase, understood its scoping model and failure modes) ·
+    <strong>honest edges</strong> (not yet used queues in production).</p>
+    <p>Listen for: filler words, trailing off, apologising for your experience. Say "I'm moving
+    into backend" rather than "I'm only a frontend developer." The facts are identical; one of
+    them is accurate about your trajectory.</p>
+  </div>
+</div>
+
+<h2><span class="num">7</span>What comes after this course</h2>
+
+<p>Ten lessons end here. Honestly, that is enough to interview with — and not enough to stop.
+In priority order:</p>
+
+<div class="trace">
+  <div class="trace-step">
+    <span class="trace-label">1 · Build one public thing</span>
+    <p>You deferred this, reasonably. Reconsider now: without a merged PR at your old job, a
+    small, tested, well-documented API on GitHub is the only evidence a hiring manager can
+    inspect directly. A halaqa-shaped app would be ideal — you know the domain cold, and that
+    shows in the modelling. <strong>Two weekends, and worth more than two more lessons.</strong></p>
+  </div>
+  <div class="trace-step">
+    <span class="trace-label">2 · Join one community</span>
+    <p><a href="https://laracasts.com/discuss">Laracasts Discuss</a> ·
+    <a href="https://discord.gg/laravel">Laravel Discord</a> ·
+    <a href="https://reddit.com/r/laravel">r/laravel</a>. Answering a beginner's question is
+    retrieval practice with social stakes — it exposes gaps faster than reading does.</p>
+  </div>
+  <div class="trace-step">
+    <span class="trace-label">3 · Learn queues when you need them</span>
+    <p>Deliberately cut from this course. Worth a weekend once the fundamentals are solid — it
+    is the most common "we also use…" in Laravel postings.</p>
+  </div>
+  <div class="trace-step">
+    <span class="trace-label">4 · Keep using me</span>
+    <p>Bring real take-home tests, real interview questions you fumbled, real code for review.
+    That is more useful now than more lessons.</p>
+  </div>
+</div>
+
+<div class="source">
+  <span class="label">Primary source — ongoing</span>
+  <p><a href="https://laravel.com/docs/12.x">The Laravel 12.x documentation</a>, as a reference
+  rather than a book. You now know enough vocabulary to find things in it quickly, which is the
+  real skill.</p>
+  <p>For interview breadth: <a href="https://laravel-news.com">Laravel News</a> keeps you current
+  on what teams are discussing.</p>
+</div>
+
+<div class="ask-teacher">
+  <span class="label">Ask your teacher — this is where I become most useful</span>
+  <p><em>"Run a mock interview. Ask me ten questions, grade each answer."</em> ·
+  <em>"Here's a take-home I received — help me plan it."</em> ·
+  <em>"Here's the code I submitted. What would a reviewer say?"</em> ·
+  <em>"I was asked X and froze. What should I have said?"</em> ·
+  <em>"Here's a job posting — am I a realistic candidate?"</em></p>
+  <p>The mock interview is the highest-value thing I can do for you now. Ask for it before your
+  first real one, not after.</p>
+</div>
+
+<div class="footer">
+  <p class="meta">
+    <strong>Lesson 10 of 10 — course complete.</strong> Good luck. You know more than you think
+    you do; the task now is saying it clearly.<br>
+    <a href="0009-architecture-services-and-di.html">← Lesson 9</a> ·
+    <a href="0001-the-request-lifecycle.html">Back to Lesson 1</a> ·
+    <a href="../reference/0005-building-an-endpoint.html">Interview answers</a> ·
+    <a href="../MISSION.md">MISSION.md</a>
+  </p>
+</div>
+
+<script src="../assets/quiz.js"></script>
+</body>
+</html>
