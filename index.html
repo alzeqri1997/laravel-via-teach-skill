@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="A practical Laravel backend course: trace requests, build endpoints, secure APIs, test behavior, and prepare for interviews.">
+  <title>Laravel Backend Field Guide</title>
+  <link rel="stylesheet" href="assets/home.css">
+</head>
+<body>
+  <a class="skip-link" href="#lessons">Skip to lessons</a>
+
+  <header class="site-header">
+    <a class="brand" href="index.html" aria-label="Laravel Backend Field Guide home">
+      <span class="brand-mark" aria-hidden="true">L→</span>
+      <span>Backend Field Guide</span>
+    </a>
+    <nav aria-label="Primary navigation">
+      <a href="#lessons">Lessons</a>
+      <a href="#references">References</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero" aria-labelledby="course-title">
+      <div class="hero-copy">
+        <p class="kicker">Laravel · guided course</p>
+        <h1 id="course-title">Follow the request.<br><span>Learn the backend.</span></h1>
+        <p class="intro">Ten practical lessons for frontend developers moving into Laravel. Read real endpoints, understand Eloquent, build secure APIs, test them, and explain your decisions in an interview.</p>
+        <div class="hero-actions">
+          <a class="button primary" href="lessons/0001-the-request-lifecycle.html">Start lesson 1 <span aria-hidden="true">→</span></a>
+          <a class="button secondary" href="#course-map">View course map</a>
+        </div>
+      </div>
+
+      <div class="request-trace" aria-label="A Laravel request moving through the application">
+        <p class="trace-label">GET /api/halaqas/42</p>
+        <ol>
+          <li><span>01</span><strong>Route</strong><small>Match the request</small></li>
+          <li><span>02</span><strong>Middleware</strong><small>Check access</small></li>
+          <li><span>03</span><strong>Controller</strong><small>Coordinate work</small></li>
+          <li><span>04</span><strong>Eloquent</strong><small>Query the data</small></li>
+          <li class="response"><span>05</span><strong>JSON</strong><small>Return the resource</small></li>
+        </ol>
+      </div>
+    </section>
+
+    <section class="course-map" id="course-map" aria-labelledby="map-title">
+      <div>
+        <p class="section-label">Course map</p>
+        <h2 id="map-title">From “what happens?” to “here’s why.”</h2>
+      </div>
+      <dl class="course-stats">
+        <div><dt>10</dt><dd>lessons</dd></div>
+        <div><dt>6</dt><dd>references</dd></div>
+        <div><dt>~5h</dt><dd>total study</dd></div>
+      </dl>
+    </section>
+
+    <section class="lessons" id="lessons" aria-labelledby="lessons-title">
+      <div class="section-heading">
+        <p class="section-label">The learning path</p>
+        <h2 id="lessons-title">Lessons</h2>
+        <p>Take these in order. Each lesson builds on the request path established before it.</p>
+      </div>
+
+      <ol class="lesson-list">
+        <li>
+          <a href="lessons/0001-the-request-lifecycle.html">
+            <span class="lesson-number">01</span>
+            <span class="lesson-copy"><strong>What Happens Before Your <code>fetch()</code> Resolves</strong><small>Trace a request from the browser to a JSON response.</small></span>
+            <span class="arrow" aria-hidden="true">→</span>
+          </a>
+        </li>
+        <li>
+          <a href="lessons/0002-reading-an-api-controller.html">
+            <span class="lesson-number">02</span>
+            <span class="lesson-copy"><strong>Reading the Endpoint You Used to Call</strong><small>Understand controllers, route binding, and API resources.</small></span>
+            <span class="arrow" aria-hidden="true">→</span>
+          </a>
+        </li>
+        <li>
+          <a href="lessons/0003-your-first-real-trace.html">
+            <span class="lesson-number">03</span>
+            <span class="lesson-copy"><strong>Your First Real Trace</strong><small>Follow production-shaped Laravel code without getting lost.</small></span>
+            <span class="arrow" aria-hidden="true">→</span>
+          </a>
+        </li>
+        <li>
+          <a href="lessons/0004-eloquent-and-the-n-plus-one-trap.html">
+            <span class="lesson-number">04</span>
+            <span class="lesson-copy"><strong>Relationships and the N+1 Trap</strong><small>Model relationships and spot expensive query patterns.</small></span>
+            <span class="arrow" aria-hidden="true">→</span>
+          </a>
+        </li>
+        <li>
+          <a href="lessons/0005-building-an-endpoint-from-blank.html">
+            <span class="lesson-number">05</span>
+            <span class="lesson-copy"><strong>Building an Endpoint From Blank</strong><small>Build a complete endpoint in a repeatable order.</small></span>
+            <span class="arrow" aria-hidden="true">→</span>
+          </a>
+        </li>
+        <li>
+          <a href="lessons/0006-auth-sanctum-and-policies.html">
+            <span class="lesson-number">06</span>
+            <span class="lesson-copy"><strong>Who Are You, and May You?</strong><small>Separate authentication from authorization with Sanctum and policies.</small></span>
+            <span class="arrow" aria-hidden="true">→</span>
+          </a>
+        </li>
+        <li>
+          <a href="lessons/0007-testing-your-endpoint.html">
+            <span class="lesson-number">07</span>
+            <span class="lesson-copy"><strong>The Test That Gets You Hired</strong><small>Prove API behavior with focused HTTP tests.</small></span>
+            <span class="arrow" aria-hidden="true">→</span>
+          </a>
+        </li>
+        <li>
+          <a href="lessons/0008-eloquent-queries-and-transactions.html">
+            <span class="lesson-number">08</span>
+            <span class="lesson-copy"><strong>Querying Like You Mean It</strong><small>Write expressive queries and protect multi-step changes.</small></span>
+            <span class="arrow" aria-hidden="true">→</span>
+          </a>
+        </li>
+        <li>
+          <a href="lessons/0009-architecture-services-and-di.html">
+            <span class="lesson-number">09</span>
+            <span class="lesson-copy"><strong>Where Does the Code Go?</strong><small>Use services and dependency injection without overengineering.</small></span>
+            <span class="arrow" aria-hidden="true">→</span>
+          </a>
+        </li>
+        <li>
+          <a href="lessons/0010-interview-preparation.html">
+            <span class="lesson-number">10</span>
+            <span class="lesson-copy"><strong>Saying What You Know</strong><small>Turn practical understanding into clear interview answers.</small></span>
+            <span class="arrow" aria-hidden="true">→</span>
+          </a>
+        </li>
+      </ol>
+    </section>
+
+    <section class="references" id="references" aria-labelledby="references-title">
+      <div class="section-heading">
+        <p class="section-label">Keep beside your editor</p>
+        <h2 id="references-title">Reference field notes</h2>
+        <p>Printable maps and checklists for the concepts you will use more than once.</p>
+      </div>
+
+      <div class="reference-grid">
+        <a href="reference/0001-request-lifecycle-cheatsheet.html"><span>REF 01</span><strong>Request Lifecycle &amp; Project Map</strong><small>Trace the full path at a glance.</small></a>
+        <a href="reference/0002-api-endpoint-anatomy.html"><span>REF 02</span><strong>API Endpoint Anatomy</strong><small>Name every moving part.</small></a>
+        <a href="reference/0003-ethaaf-field-guide.html"><span>REF 03</span><strong>Ethaaf Field Guide</strong><small>Navigate the real codebase.</small></a>
+        <a href="reference/0004-eloquent-and-versions.html"><span>REF 04</span><strong>Eloquent &amp; the Version Delta</strong><small>Relationships and version context.</small></a>
+        <a href="reference/0005-building-an-endpoint.html"><span>REF 05</span><strong>Build Checklist &amp; Interview Answers</strong><small>Ship in the right order.</small></a>
+        <a href="reference/0006-auth-reference.html"><span>REF 06</span><strong>Auth &amp; Testing</strong><small>Keep 401, 403, and tests straight.</small></a>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p><strong>Laravel Backend Field Guide</strong></p>
+    <p>Built for learning in the open. Start with the request; follow the evidence.</p>
+    <a href="#course-title">Back to top ↑</a>
+  </footer>
+</body>
+</html>
